@@ -51,33 +51,32 @@ export function ChatInterface({ initialMessages }: ChatInterfaceProps) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="border-b border-border p-6">
-        <h2 className="text-2xl font-bold text-text-primary">Ask Vitalis</h2>
-        <p className="text-sm text-text-secondary mt-1">AI Ops Assistant for Ward 101</p>
-      </div>
-
       {/* Chat Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {/* Intro Block */}
         {messages.length === 0 && (
-          <div className="glass-panel rounded-lg p-6">
-            <div className="flex items-start gap-4">
-              <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-accent-cyan to-accent-blue flex items-center justify-center flex-shrink-0">
-                <Sparkles className="h-5 w-5 text-bg-primary" />
+          <div className="rounded-lg p-4 border" style={{ backgroundColor: 'hsl(var(--bg-tertiary))', borderColor: 'hsl(var(--border-light))' }}>
+            <div className="flex items-start gap-3">
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'hsl(var(--accent-green))' }}>
+                <Sparkles className="h-4 w-4" style={{ color: 'hsl(var(--text-white))' }} />
               </div>
               <div className="flex-1">
-                <p className="text-text-primary mb-4">
+                <p className="text-xs mb-3" style={{ color: 'hsl(var(--text-dark))' }}>
                   I monitor your ward's equipment and room readiness. Ask me what matters right now.
                 </p>
-                <div className="space-y-2">
-                  <p className="text-xs text-text-tertiary font-medium">Try asking:</p>
-                  <div className="flex flex-wrap gap-2">
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-medium" style={{ color: 'hsl(var(--text-gray))' }}>Try asking:</p>
+                  <div className="flex flex-wrap gap-1.5">
                     {quickPrompts.map((prompt, idx) => (
                       <button
                         key={idx}
                         onClick={() => handleQuickPrompt(prompt)}
-                        className="px-3 py-1.5 text-sm bg-bg-tertiary hover:bg-accent-cyan/10 text-text-secondary hover:text-accent-cyan border border-border hover:border-accent-cyan rounded-full transition-smooth"
+                        className="px-2.5 py-1 text-[11px] rounded-full transition-smooth border"
+                        style={{
+                          backgroundColor: 'hsl(var(--bg-tertiary))',
+                          color: 'hsl(var(--text-gray))',
+                          borderColor: 'hsl(var(--border-light))'
+                        }}
                       >
                         {prompt}
                       </button>
@@ -96,43 +95,50 @@ export function ChatInterface({ initialMessages }: ChatInterfaceProps) {
             className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`max-w-[85%] rounded-lg p-4 ${
+              className={`max-w-[85%] rounded-lg p-2.5 ${
                 message.role === 'user'
-                  ? 'bg-accent-cyan/10 border border-accent-cyan/30'
-                  : 'glass-panel'
+                  ? 'border border-white/20'
+                  : 'border border-border-light'
               }`}
+              style={{
+                backgroundColor: message.role === 'user'
+                  ? 'hsl(var(--bg-user-msg))'
+                  : 'hsl(var(--bg-ai-msg))'
+              }}
             >
-              {message.role === 'assistant' && (
-                <div className="flex items-center gap-2 mb-2 pb-2 border-b border-accent-cyan/20">
-                  <Sparkles className="h-4 w-4 text-accent-cyan" />
-                  <span className="text-sm font-medium text-text-primary">Vitalis</span>
-                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-accent-cyan/20 text-accent-cyan rounded">AI</span>
-                </div>
-              )}
-              {message.role === 'user' && (
-                <div className="text-xs text-text-tertiary mb-1">You</div>
-              )}
-              <div className="text-text-primary whitespace-pre-wrap">{message.content}</div>
+              <div className="text-xs whitespace-pre-wrap" style={{ color: message.role === 'user' ? 'hsl(var(--text-white))' : 'hsl(var(--text-dark))' }}>
+                {message.content}
+              </div>
             </div>
           </div>
         ))}
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-border p-6">
-        <div className="flex gap-3">
+      <div className="flex-shrink-0 p-3">
+        <div className="flex items-center gap-2 rounded-full px-3 py-1.5 border-2" style={{
+          backgroundColor: 'hsl(var(--bg-tertiary))',
+          borderColor: 'hsl(var(--accent-green))'
+        }}>
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder="Describe what you need help with..."
-            className="flex-1 bg-bg-tertiary border-border text-text-primary placeholder:text-text-tertiary"
+            placeholder="Message..."
+            className="flex-1 text-xs border-0 focus-visible:ring-0 focus-visible:ring-offset-0 p-0 h-auto bg-transparent"
+            style={{
+              color: 'hsl(var(--text-dark))'
+            }}
           />
           <Button
             onClick={() => handleSend()}
-            className="bg-accent-cyan hover:bg-accent-cyan/90 text-bg-primary"
+            className="h-7 w-7 p-0 rounded-full flex-shrink-0"
+            style={{
+              backgroundColor: 'hsl(var(--accent-green))',
+              color: 'hsl(var(--text-white))'
+            }}
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>

@@ -1,19 +1,35 @@
 import React from 'react';
-import { 
-  MessageSquare, 
-  LayoutDashboard, 
-  Package, 
-  MapPin, 
-  Wrench, 
+import {
+  MessageSquare,
+  LayoutDashboard,
+  Package,
+  MapPin,
+  Wrench,
   FileText,
-  ChevronDown
+  ChevronRight,
+  ChevronDown,
+  User as UserIcon,
+  Settings,
+  LogOut,
+  HelpCircle
 } from 'lucide-react';
 import { User } from '@/types/wardops';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
 
 interface SidebarProps {
   user: User;
-  activeTab: string;
+  activeTab: string | null;
   onTabChange: (tab: string) => void;
+  isMiddlePanelCollapsed?: boolean;
+  onExpandMiddlePanel?: () => void;
 }
 
 const navItems = [
@@ -25,70 +41,112 @@ const navItems = [
   { id: 'reports', label: 'Reports', icon: FileText },
 ];
 
-export function Sidebar({ user, activeTab, onTabChange }: SidebarProps) {
+export function Sidebar({ user, activeTab, onTabChange, isMiddlePanelCollapsed, onExpandMiddlePanel }: SidebarProps) {
   return (
-    <div className="flex h-screen w-64 flex-col bg-bg-secondary border-r border-border">
+    <div className="flex h-screen w-40 flex-col border-r border-border-medium" style={{ backgroundColor: 'hsl(var(--bg-sidebar))' }}>
       {/* Logo Section */}
-      <div className="p-6 border-b border-border">
+      <div className="p-4 border-b border-white/10">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-accent-cyan to-accent-blue flex items-center justify-center">
-            <div className="h-6 w-6 border-2 border-bg-primary rounded-sm" />
+          <div className="h-8 w-8 rounded-lg bg-accent-green flex items-center justify-center">
+            <div className="h-5 w-5 border-2 border-white rounded-sm" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-text-primary">Vitalis</h1>
-            <p className="text-xs text-text-tertiary">AI Ops Command Center</p>
+            <h1 className="text-base font-semibold" style={{ color: 'hsl(var(--text-white))' }}>Vitalis</h1>
+            <p className="text-xs" style={{ color: 'hsl(var(--text-white-dim))' }}>AI Ops Center</p>
           </div>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-3 space-y-0.5">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
-          
+          const isCollapsed = isActive && isMiddlePanelCollapsed;
+
           return (
             <button
               key={item.id}
-              onClick={() => onTabChange(item.id)}
+              onClick={() => {
+                if (isCollapsed && onExpandMiddlePanel) {
+                  onExpandMiddlePanel();
+                } else {
+                  onTabChange(item.id);
+                }
+              }}
               className={`
-                w-full flex items-center gap-3 px-4 py-3 rounded-lg
-                transition-smooth relative
-                ${isActive 
-                  ? 'bg-bg-tertiary text-text-primary glow-border-cyan' 
-                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-tertiary/50'
+                w-full flex items-center gap-2 px-3 py-2 rounded-md
+                transition-smooth text-sm
+                ${isActive
+                  ? 'bg-white/10'
+                  : 'hover:bg-white/5'
                 }
               `}
+              style={{ color: isActive ? 'hsl(var(--text-white))' : 'hsl(var(--text-white-dim))' }}
             >
-              {isActive && (
-                <div className="absolute left-0 w-1 h-8 bg-accent-cyan rounded-r glow-cyan" />
-              )}
-              <Icon className="h-5 w-5 flex-shrink-0" />
+              <Icon className="h-4 w-4 flex-shrink-0" />
               <span className="font-medium">{item.label}</span>
+              {isCollapsed && <ChevronRight className="h-3 w-3 ml-auto" />}
             </button>
           );
         })}
       </nav>
 
       {/* User Card */}
-      <div className="p-4 border-t border-border">
-        <div className="glass-panel rounded-lg p-3 flex items-center gap-3">
-          <div className="relative">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-accent-magenta to-accent-blue flex items-center justify-center">
-              <span className="text-sm font-bold text-text-primary">
-                {user.name.split(' ').map(n => n[0]).join('')}
-              </span>
-            </div>
-            {user.isOnline && (
-              <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-accent-green rounded-full border-2 border-bg-secondary" />
-            )}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-text-primary truncate">{user.name}</p>
-            <p className="text-xs text-text-tertiary truncate">{user.role}</p>
-          </div>
-          <ChevronDown className="h-4 w-4 text-text-tertiary flex-shrink-0" />
-        </div>
+      <div className="p-3 border-t border-white/10">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="w-full rounded-md p-2 flex items-center gap-2 bg-white/5 hover:bg-white/10 transition-smooth">
+              <div className="relative">
+                <div className="h-8 w-8 rounded-full bg-accent-green flex items-center justify-center">
+                  <span className="text-xs font-semibold" style={{ color: 'hsl(var(--text-white))' }}>
+                    {user.name.split(' ').map(n => n[0]).join('')}
+                  </span>
+                </div>
+                {user.isOnline && (
+                  <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 bg-green-400 rounded-full border-2" style={{ borderColor: 'hsl(var(--bg-sidebar))' }} />
+                )}
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-xs font-medium truncate" style={{ color: 'hsl(var(--text-white))' }}>{user.name}</p>
+                <p className="text-xs truncate" style={{ color: 'hsl(var(--text-white-dim))' }}>{user.role}</p>
+              </div>
+              <ChevronDown className="h-3 w-3 flex-shrink-0" style={{ color: 'hsl(var(--text-white-dim))' }} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium">{user.name}</p>
+                <p className="text-xs text-muted-foreground">{user.role}</p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => toast.info('Profile page coming soon')}>
+              <UserIcon className="mr-2 h-4 w-4" />
+              <span>Profile</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.info('Settings page coming soon')}>
+              <Settings className="mr-2 h-4 w-4" />
+              <span>Settings</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => toast.info('Help page coming soon')}>
+              <HelpCircle className="mr-2 h-4 w-4" />
+              <span>Help</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => {
+                toast.success('Logged out successfully');
+                // Add actual logout logic here
+              }}
+              className="text-red-600 focus:text-red-600"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Logout</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );

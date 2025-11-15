@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { ChatInterface } from '@/components/ChatInterface';
-import { RightSidebar } from '@/components/RightSidebar';
+import { Hospital3DMap } from '@/components/Hospital3DMap';
+import { NotificationBell } from '@/components/NotificationBell';
+import { RoomDetailView } from '@/components/RoomDetailView';
 import {
   mockUser,
   mockAssets,
@@ -10,16 +12,21 @@ import {
   mockChatHistory,
 } from '@/data/mockData';
 import { mockNotifications } from '@/data/mockNotifications';
+import { mockRoomDetails } from '@/data/mockRoomDetails';
 import { Task } from '@/types/wardops';
 import { Notification } from '@/types/notifications';
 import { toast } from 'sonner';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
-  const [activeTab, setActiveTab] = useState('ask');
+  const [activeTab, setActiveTab] = useState<string | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>('room-101');
   const [tasks, setTasks] = useState<Task[]>(mockTasks);
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [isMiddlePanelCollapsed, setIsMiddlePanelCollapsed] = useState(false);
+  const [roomDetailViewId, setRoomDetailViewId] = useState<string | null>(null);
 
   const handleTaskComplete = (taskId: string) => {
     setTasks(tasks.map(t => 
@@ -53,58 +60,129 @@ const Index = () => {
     handleNotificationRead(notification.id);
   };
 
+  const handleRoomSelect = (roomId: string) => {
+    setSelectedRoomId(roomId);
+  };
+
+  const handleEnterRoom = (roomId: string) => {
+    setRoomDetailViewId(roomId);
+  };
+
+  const handleExitRoomView = () => {
+    setRoomDetailViewId(null);
+  };
+
+  const handleCloseRoomPopup = () => {
+    setSelectedRoomId(null);
+  };
+
+  // Auto-expand middle panel when tab changes
+  useEffect(() => {
+    if (activeTab) {
+      setIsMiddlePanelCollapsed(false);
+    }
+  }, [activeTab]);
+
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-bg-primary">
-      {/* Left Sidebar */}
-      <Sidebar 
-        user={mockUser} 
-        activeTab={activeTab} 
-        onTabChange={setActiveTab} 
+    <div className="flex h-screen w-full overflow-hidden" style={{ backgroundColor: 'hsl(var(--bg-map))' }}>
+      {/* Left Sidebar - Always Visible */}
+      <Sidebar
+        user={mockUser}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        isMiddlePanelCollapsed={isMiddlePanelCollapsed}
+        onExpandMiddlePanel={() => setIsMiddlePanelCollapsed(false)}
       />
 
-      {/* Resizable Main Content Area */}
+      {/* Main Content Area - Map always visible, middle panel conditional */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Center Column */}
-        <ResizablePanel defaultSize={75} minSize={50}>
-          <div className="h-full flex flex-col bg-bg-secondary overflow-y-auto">
-            {activeTab === 'ask' ? (
-              <ChatInterface initialMessages={mockChatHistory} />
+        {/* Right Panel - Map View (Always Visible) - First in DOM for correct resize behavior */}
+        <ResizablePanel
+          defaultSize={activeTab ? (isMiddlePanelCollapsed ? 100 : 80) : 100}
+          minSize={50}
+          className="order-2"
+        >
+          <div className="h-full border-l relative" style={{ borderColor: 'hsl(var(--border-light))', backgroundColor: 'hsl(var(--bg-map))' }}>
+            {/* Conditionally render Hospital Map or Room Detail View */}
+            {roomDetailViewId && mockRoomDetails[roomDetailViewId] ? (
+              <RoomDetailView
+                room={mockRoomDetails[roomDetailViewId]}
+                onExit={handleExitRoomView}
+              />
             ) : (
-              <div className="p-8 flex-1">
-                <div className="glass-panel rounded-lg p-12 text-center">
-                  <h2 className="text-2xl font-bold text-text-primary mb-2">
-                    {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
-                  </h2>
-                  <p className="text-text-secondary">
-                    Coming soon - this feature is under development
-                  </p>
-                </div>
+              <Hospital3DMap
+                roomReadiness={mockRoomReadiness}
+                onRoomSelect={handleRoomSelect}
+                selectedRoomId={selectedRoomId}
+                onEnterRoom={handleEnterRoom}
+                onCloseRoomPopup={handleCloseRoomPopup}
+                roomDetails={mockRoomDetails}
+              />
+            )}
+
+            {/* Notification Bell - Only show when not in room detail view */}
+            {!roomDetailViewId && (
+              <div style={{ position: 'absolute', top: '16px', right: '16px', zIndex: 100 }}>
+                <NotificationBell
+                  notifications={notifications}
+                  onNotificationRead={handleNotificationRead}
+                  onNotificationDismiss={handleNotificationDismiss}
+                />
               </div>
             )}
           </div>
         </ResizablePanel>
 
-        {/* Draggable Resize Handle */}
-        <ResizableHandle className="w-1 bg-border hover:bg-accent-cyan transition-smooth cursor-col-resize" />
+        {/* Middle Panel - Only visible when a tab is selected AND not collapsed */}
+        {activeTab && !isMiddlePanelCollapsed && (
+          <>
+            {/* Draggable Resize Handle */}
+            <ResizableHandle className="w-1 cursor-col-resize order-1" style={{ backgroundColor: 'hsl(var(--border-medium))' }} />
 
-        {/* Right Sidebar - Collapsible & Resizable */}
-        <ResizablePanel defaultSize={25} minSize={0} maxSize={40} collapsible={true}>
-          <RightSidebar
-            activeTab={activeTab}
-            assets={mockAssets}
-            roomReadiness={mockRoomReadiness}
-            tasks={tasks}
-            notifications={notifications}
-            selectedRoomId={selectedRoomId}
-            onRoomSelect={setSelectedRoomId}
-            onAssetSelect={(id) => console.log('Asset selected:', id)}
-            onTaskComplete={handleTaskComplete}
-            onTaskDismiss={handleTaskDismiss}
-            onNotificationRead={handleNotificationRead}
-            onNotificationDismiss={handleNotificationDismiss}
-            onNotificationAction={handleNotificationAction}
-          />
-        </ResizablePanel>
+            <ResizablePanel defaultSize={20} minSize={15} maxSize={30} collapsible={true} className="order-0">
+              <div className="h-full flex flex-col" style={{ backgroundColor: 'hsl(var(--bg-middle))' }}>
+                {/* Header with collapse button */}
+                <div className="border-b p-3 flex items-center justify-between flex-shrink-0" style={{ borderColor: 'hsl(var(--border-light))' }}>
+                  <h3 className="text-sm font-semibold truncate min-w-0" style={{ color: 'hsl(var(--text-dark))' }}>
+                    {activeTab === 'ask'
+                      ? selectedRoomId
+                        ? `Ask Vitalis (${selectedRoomId.replace('room-', 'Room ')})`
+                        : 'Ask Vitalis'
+                      : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsMiddlePanelCollapsed(true)}
+                    className="flex-shrink-0 h-7 w-7 p-0"
+                    style={{ color: 'hsl(var(--text-gray))' }}
+                    title="Collapse panel"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto scrollbar-hide">
+                  {activeTab === 'ask' ? (
+                    <ChatInterface initialMessages={mockChatHistory} />
+                  ) : (
+                    <div className="p-6 flex-1">
+                      <div className="rounded-lg p-8 text-center" style={{ backgroundColor: 'hsl(var(--bg-tertiary))' }}>
+                        <h2 className="text-lg font-semibold mb-2" style={{ color: 'hsl(var(--text-dark))' }}>
+                          {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+                        </h2>
+                        <p className="text-sm" style={{ color: 'hsl(var(--text-gray))' }}>
+                          Coming soon - this feature is under development
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </ResizablePanel>
+          </>
+        )}
       </ResizablePanelGroup>
     </div>
   );

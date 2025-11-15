@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { WardMap } from './WardMap';
 import { RoomDetails } from './RoomDetails';
@@ -9,7 +9,7 @@ import { Notification } from '@/types/notifications';
 import { Button } from './ui/button';
 
 interface RightSidebarProps {
-  activeTab: string;
+  activeTab: string | null;
   assets: Asset[];
   roomReadiness: RoomReadiness[];
   tasks: Task[];
@@ -39,7 +39,16 @@ export function RightSidebar({
   onNotificationDismiss,
   onNotificationAction,
 }: RightSidebarProps) {
-  const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false);
+  const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(true);
+
+  // Auto-expand when a tab is selected, collapse when no tab is selected
+  useEffect(() => {
+    if (activeTab) {
+      setIsManuallyCollapsed(false);
+    } else {
+      setIsManuallyCollapsed(true);
+    }
+  }, [activeTab]);
 
   const selectedRoomReadiness = roomReadiness.find(
     r => r.roomId === selectedRoomId
@@ -62,17 +71,17 @@ export function RightSidebar({
   }
 
   return (
-    <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col">
+    <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col min-w-0">
       {/* Collapse Button */}
-      <div className="border-b border-border p-3 flex items-center justify-between">
-        <h3 className="text-sm font-bold text-text-primary">
+      <div className="border-b border-border p-3 flex items-center justify-between min-w-0">
+        <h3 className="text-sm font-bold text-text-primary truncate min-w-0">
           {activeTab === 'ask' ? 'Ward Overview' : 'Details'}
         </h3>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setIsManuallyCollapsed(true)}
-          className="text-text-tertiary hover:text-text-primary"
+          className="text-text-tertiary hover:text-text-primary flex-shrink-0"
           title="Collapse sidebar"
         >
           <ChevronRight className="h-4 w-4" />
@@ -80,11 +89,11 @@ export function RightSidebar({
       </div>
 
       {/* Content based on active tab */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
         {activeTab === 'ask' && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full min-w-0">
             {/* Ward Map */}
-            <div className="flex-shrink-0">
+            <div className="flex-shrink-0 min-w-0">
               <WardMap
                 assets={assets}
                 roomReadiness={roomReadiness}
@@ -95,7 +104,7 @@ export function RightSidebar({
             </div>
 
             {/* Collapsible Sections */}
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 min-w-0">
               {/* Notifications Panel */}
               <NotificationPanel
                 notifications={notifications}
@@ -123,33 +132,35 @@ export function RightSidebar({
         )}
 
         {activeTab === 'dashboard' && (
-          <div className="p-6">
-            <div className="glass-panel rounded-lg p-6">
-              <p className="text-sm text-text-secondary">Dashboard metrics will appear here</p>
+          <div className="p-6 min-w-0">
+            <div className="glass-panel rounded-lg p-6 min-w-0">
+              <p className="text-sm text-text-secondary break-words">Dashboard metrics will appear here</p>
             </div>
           </div>
         )}
 
         {activeTab === 'inventory' && (
-          <div className="p-6">
-            <div className="glass-panel rounded-lg p-6">
-              <p className="text-sm text-text-secondary">Inventory details will appear here</p>
+          <div className="p-6 min-w-0">
+            <div className="glass-panel rounded-lg p-6 min-w-0">
+              <p className="text-sm text-text-secondary break-words">Inventory details will appear here</p>
             </div>
           </div>
         )}
 
         {activeTab === 'locations' && (
-          <div className="p-6">
-            <WardMap
-              assets={assets}
-              roomReadiness={roomReadiness}
-              onRoomSelect={onRoomSelect}
-              onAssetSelect={onAssetSelect}
-              selectedRoomId={selectedRoomId}
-            />
-            <div className="mt-4">
+          <div className="p-6 min-w-0">
+            <div className="min-w-0">
+              <WardMap
+                assets={assets}
+                roomReadiness={roomReadiness}
+                onRoomSelect={onRoomSelect}
+                onAssetSelect={onAssetSelect}
+                selectedRoomId={selectedRoomId}
+              />
+            </div>
+            <div className="mt-4 min-w-0">
               {selectedRoomReadiness && (
-                <RoomDetails 
+                <RoomDetails
                   roomReadiness={selectedRoomReadiness}
                   tasks={tasks}
                 />
@@ -159,8 +170,8 @@ export function RightSidebar({
         )}
 
         {activeTab === 'maintenance' && (
-          <div className="p-6">
-            <TaskQueue 
+          <div className="p-6 min-w-0">
+            <TaskQueue
               tasks={tasks.filter(t => t.action === 'clean_asset' || t.action === 'repair_asset')}
               onTaskComplete={onTaskComplete}
               onTaskDismiss={onTaskDismiss}
@@ -169,9 +180,9 @@ export function RightSidebar({
         )}
 
         {activeTab === 'reports' && (
-          <div className="p-6">
-            <div className="glass-panel rounded-lg p-6">
-              <p className="text-sm text-text-secondary">Report data will appear here</p>
+          <div className="p-6 min-w-0">
+            <div className="glass-panel rounded-lg p-6 min-w-0">
+              <p className="text-sm text-text-secondary break-words">Report data will appear here</p>
             </div>
           </div>
         )}
