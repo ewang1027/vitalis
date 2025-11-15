@@ -134,40 +134,41 @@ export function ChatInterface({ initialMessages, userId, roomId, contextData }: 
 
   return (
     <div className="flex h-full flex-col">
+      {/* Quick Prompts - Always Visible */}
+      <div className="flex-shrink-0 p-3 pb-0">
+        <div className="rounded-lg p-2.5 border" style={{ backgroundColor: 'hsl(var(--bg-tertiary))', borderColor: 'hsl(var(--border-light))' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <Sparkles className="h-3.5 w-3.5 flex-shrink-0" style={{ color: 'hsl(var(--accent-green))' }} />
+            <p className="text-[10px] font-medium" style={{ color: 'hsl(var(--text-gray))' }}>Quick prompts:</p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {quickPrompts.map((prompt, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleQuickPrompt(prompt)}
+                disabled={isLoading}
+                className="px-2.5 py-1 text-[11px] rounded-full transition-all border hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: 'hsl(var(--bg-white))',
+                  color: 'hsl(var(--text-dark))',
+                  borderColor: 'hsl(var(--border-light))'
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Chat Area */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {/* Intro Block */}
+        {/* Intro Message - Only when no messages */}
         {messages.length === 0 && (
-          <div className="rounded-lg p-4 border" style={{ backgroundColor: 'hsl(var(--bg-tertiary))', borderColor: 'hsl(var(--border-light))' }}>
-            <div className="flex items-start gap-3">
-              <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'hsl(var(--accent-green))' }}>
-                <Sparkles className="h-4 w-4" style={{ color: 'hsl(var(--text-white))' }} />
-              </div>
-              <div className="flex-1">
-                <p className="text-xs mb-3" style={{ color: 'hsl(var(--text-dark))' }}>
-                  I monitor your ward's equipment and room readiness. Ask me what matters right now.
-                </p>
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-medium" style={{ color: 'hsl(var(--text-gray))' }}>Try asking:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {quickPrompts.map((prompt, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => handleQuickPrompt(prompt)}
-                        className="px-2.5 py-1 text-[11px] rounded-full transition-smooth border"
-                        style={{
-                          backgroundColor: 'hsl(var(--bg-tertiary))',
-                          color: 'hsl(var(--text-gray))',
-                          borderColor: 'hsl(var(--border-light))'
-                        }}
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="rounded-lg p-3 border" style={{ backgroundColor: 'hsl(var(--bg-tertiary))', borderColor: 'hsl(var(--border-light))' }}>
+            <p className="text-xs text-center" style={{ color: 'hsl(var(--text-gray))' }}>
+              👋 I monitor your ward's equipment and room readiness. Ask me what matters right now!
+            </p>
           </div>
         )}
 
