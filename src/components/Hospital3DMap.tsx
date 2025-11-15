@@ -3,13 +3,13 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Database } from '@/lib/supabase';
+import type { Asset } from '@/types/wardops';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
-type Equipment = Database['public']['Tables']['equipment']['Row'];
 
 interface Hospital3DMapProps {
   rooms: Room[];
-  equipment: Equipment[];
+  equipment: Asset[];
   onRoomSelect: (roomId: string) => void;
   selectedRoomId: string | null;
   onEnterRoom?: (roomId: string) => void;
@@ -25,7 +25,7 @@ function Room({
   roomId,
   isSelected,
   onClick,
-  roomDetail,
+  roomData,
   onEnterRoom,
   onClosePopup
 }: {
@@ -278,7 +278,7 @@ export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, 
     if (status === 'cleaning' || status === 'maintenance') return 'needs-attention';
 
     // Alternatively, check equipment in the room
-    const roomEquipment = equipment.filter(e => e.current_room_id === roomId);
+    const roomEquipment = equipment.filter(e => e.roomId === roomId);
     if (roomEquipment.length === 0) return 'ready';
 
     const readyCount = roomEquipment.filter(e => e.state === 'idle_ready').length;

@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/lib/supabase'
+import { transformTasks, transformEquipmentList } from '@/lib/dataTransformers'
+import type { Task, Asset } from '@/types/wardops'
 
 // Type aliases for cleaner code
 type Staff = Database['public']['Tables']['staff']['Row']
 type Patient = Database['public']['Tables']['patients']['Row']
 type Room = Database['public']['Tables']['rooms']['Row']
-type Equipment = Database['public']['Tables']['equipment']['Row']
 type Vital = Database['public']['Tables']['vitals']['Row']
-type Task = Database['public']['Tables']['tasks']['Row']
 type Notification = Database['public']['Tables']['notifications']['Row']
 type Alert = Database['public']['Tables']['alerts']['Row']
 type ChatMessage = Database['public']['Tables']['chat_messages']['Row']
@@ -57,12 +57,13 @@ export function useCurrentUser() {
           .select('*')
           .eq('is_online', true)
           .limit(1)
-          .single()
 
         if (error) throw error
-        setUser(data)
+        // Get first online staff member
+        setUser(data && data.length > 0 ? data[0] : null)
       } catch (err) {
         setError(err as Error)
+        console.error('Error fetching current user:', err)
       } finally {
         setLoading(false)
       }
@@ -121,9 +122,11 @@ export function useRooms() {
           .order('room_number', { ascending: true })
 
         if (error) throw error
+        console.log('Rooms fetched:', data?.length || 0, 'rooms')
         setRooms(data || [])
       } catch (err) {
         setError(err as Error)
+        console.error('Error fetching rooms:', err)
       } finally {
         setLoading(false)
       }
@@ -137,7 +140,7 @@ export function useRooms() {
 
 // Hook for fetching equipment/assets
 export function useEquipment() {
-  const [equipment, setEquipment] = useState<Equipment[]>([])
+  const [equipment, setEquipment] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
@@ -150,9 +153,13 @@ export function useEquipment() {
           .order('created_at', { ascending: false })
 
         if (error) throw error
-        setEquipment(data || [])
+        // Transform database equipment to frontend Asset type
+        const transformedEquipment = data ? transformEquipmentList(data) : []
+        console.log('Equipment fetched and transformed:', transformedEquipment.length, 'items')
+        setEquipment(transformedEquipment)
       } catch (err) {
         setError(err as Error)
+        console.error('Error fetching equipment:', err)
       } finally {
         setLoading(false)
       }
@@ -182,7 +189,9 @@ export function useTasks(status?: string) {
         const { data, error } = await query.order('created_at', { ascending: false })
 
         if (error) throw error
-        setTasks(data || [])
+        // Transform database tasks to frontend Task type
+        const transformedTasks = data ? transformTasks(data) : []
+        setTasks(transformedTasks)
       } catch (err) {
         setError(err as Error)
       } finally {
