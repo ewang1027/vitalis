@@ -251,7 +251,11 @@ export function useChatMessages(roomId?: string) {
         let query = supabase.from('chat_messages').select('*')
 
         if (roomId) {
+          // Fetch messages for specific room
           query = query.eq('room_id', roomId)
+        } else {
+          // Fetch general chat messages (where room_id IS NULL)
+          query = query.is('room_id', null)
         }
 
         const { data, error } = await query.order('created_at', { ascending: true })
