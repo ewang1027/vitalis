@@ -32,7 +32,7 @@ function Room({
   position: [number, number, number];
   size: [number, number, number];
   label: string;
-  status: 'ready' | 'needs-attention' | 'in-progress';
+  status: 'ready' | 'needs-attention' | 'occupied';
   roomId: string;
   isSelected: boolean;
   onClick: () => void;
@@ -51,11 +51,11 @@ function Room({
   });
 
   const getColor = () => {
-    if (isSelected) return '#10b981';
+    // Maintain status color even when selected
     switch (status) {
       case 'ready': return '#10b981';
       case 'needs-attention': return '#ef4444';
-      case 'in-progress': return '#f59e0b';
+      case 'occupied': return '#f59e0b';
       default: return '#6b7280';
     }
   };
@@ -105,7 +105,7 @@ function Room({
       <Text
         position={[0, size[1] + 0.3, 0]}
         fontSize={0.3}
-        color={isSelected ? '#10b981' : '#374151'}
+        color={isSelected ? getColor() : '#374151'}
         anchorX="center"
         anchorY="middle"
       >
@@ -122,7 +122,7 @@ function Room({
             padding: '12px',
             minWidth: '220px',
             maxWidth: '280px',
-            border: '2px solid #10b981',
+            border: `2px solid ${getColor()}`,
             position: 'relative'
           }}>
             {/* Close Button */}
@@ -267,14 +267,14 @@ export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, 
     { position: [3, 0, -1] as [number, number, number], length: 8, width: 1.5, rotation: Math.PI / 2 },
   ];
 
-  const getRoomStatus = (roomId: string): 'ready' | 'needs-attention' | 'in-progress' => {
+  const getRoomStatus = (roomId: string): 'ready' | 'needs-attention' | 'occupied' => {
     const room = rooms.find(r => r.id === roomId);
     if (!room) return 'ready';
 
     // Map database status to visual status
     const status = room.status?.toLowerCase();
     if (status === 'ready' || status === 'available') return 'ready';
-    if (status === 'occupied' || status === 'in-use') return 'in-progress';
+    if (status === 'occupied' || status === 'in-use') return 'occupied';
     if (status === 'cleaning' || status === 'maintenance') return 'needs-attention';
 
     // Alternatively, check equipment in the room
@@ -286,7 +286,7 @@ export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, 
 
     if (readyCount === totalCount) return 'ready';
     if (readyCount === 0) return 'needs-attention';
-    return 'in-progress';
+    return 'occupied';
   };
 
   return (
@@ -361,7 +361,7 @@ export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, 
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#f59e0b' }}></div>
-            <span style={{ color: '#374151' }}>In Progress</span>
+            <span style={{ color: '#374151' }}>Occupied</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#ef4444' }}></div>
