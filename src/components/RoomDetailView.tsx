@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Text } from '@react-three/drei';
-import { RoomDetail } from '@/data/mockRoomDetails';
 import { Button } from '@/components/ui/button';
 import { X, Info } from 'lucide-react';
 import * as THREE from 'three';
@@ -12,13 +11,30 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
+// Type for room details from useRoomDetails hook
 interface RoomDetailViewProps {
-  room: RoomDetail;
+  room: {
+    room: any;
+    patient: any;
+    doctor: any;
+    nurse: any;
+    vitals: any;
+    equipment: any[];
+    alerts: any[];
+  };
   onExit: () => void;
 }
 
 interface EquipmentProps {
-  equipment: RoomDetail['equipment'][0];
+  equipment: {
+    id: string;
+    name: string;
+    equipment_type: string;
+    state: string;
+    position_x: number | null;
+    position_y: number | null;
+    position_z: number | null;
+  };
   onClick: () => void;
 }
 
@@ -28,7 +44,8 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
 
   // Different colors and shapes for different equipment types
   const getEquipmentVisuals = () => {
-    switch (equipment.type) {
+    const equipmentType = equipment.equipment_type.toLowerCase();
+    switch (equipmentType) {
       case 'bed':
         return {
           geometry: <boxGeometry args={[2, 0.5, 1]} />,
@@ -70,8 +87,16 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
 
   const visuals = getEquipmentVisuals();
 
+  const position: [number, number, number] = [
+    equipment.position_x ?? 0,
+    equipment.position_y ?? 0,
+    equipment.position_z ?? 0
+  ];
+
+  const equipmentType = equipment.equipment_type.toLowerCase();
+
   return (
-    <group position={[equipment.position.x, equipment.position.y, equipment.position.z]}>
+    <group position={position}>
       <mesh
         ref={meshRef}
         onClick={onClick}
@@ -87,7 +112,7 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
       </mesh>
       {hovered && (
         <Text
-          position={[0, equipment.type === 'bed' ? 1 : 1.2, 0]}
+          position={[0, equipmentType === 'bed' ? 1 : 1.2, 0]}
           fontSize={0.2}
           color="white"
           anchorX="center"
@@ -97,13 +122,13 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
         </Text>
       )}
       {/* Status indicator */}
-      <mesh position={[0, equipment.type === 'bed' ? 0.8 : 1.5, 0]}>
+      <mesh position={[0, equipmentType === 'bed' ? 0.8 : 1.5, 0]}>
         <sphereGeometry args={[0.08, 16, 16]} />
         <meshBasicMaterial
           color={
-            equipment.status === 'active'
+            equipment.state === 'in_use'
               ? '#22c55e'
-              : equipment.status === 'idle'
+              : equipment.state === 'idle_ready'
               ? '#eab308'
               : '#ef4444'
           }
@@ -113,7 +138,7 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
   );
 }
 
-function Room({ room }: { room: RoomDetail }) {
+function Room({ roomData }: { roomData: any }) {
   const wallColor = '#e5e7eb';
   const floorColor = '#f3f4f6';
 
@@ -151,11 +176,11 @@ function Room({ room }: { room: RoomDetail }) {
         anchorX="center"
         anchorY="middle"
       >
-        {room.roomName}
+        {roomData.room?.room_name || roomData.room?.room_number || 'Room'}
       </Text>
 
       {/* Patient name on back wall if patient exists */}
-      {room.patient && (
+      {roomData.patient && (
         <Text
           position={[0, 3, -4.9]}
           fontSize={0.25}
@@ -163,7 +188,7 @@ function Room({ room }: { room: RoomDetail }) {
           anchorX="center"
           anchorY="middle"
         >
-          Patient: {room.patient.name}
+          Patient: {roomData.patient.name}
         </Text>
       )}
     </group>
@@ -171,9 +196,7 @@ function Room({ room }: { room: RoomDetail }) {
 }
 
 export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
-  const [selectedEquipment, setSelectedEquipment] = useState<RoomDetail['equipment'][0] | null>(
-    null
-  );
+  const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
 
   return (
     <div className="relative w-full h-full bg-background">
@@ -181,7 +204,9 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
       <div className="absolute top-0 left-0 right-0 z-10 bg-background/95 backdrop-blur border-b p-2">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-bold">{room.roomName} - 3D View</h2>
+            <h2 className="text-sm font-bold">
+              {room.room?.room_name || room.room?.room_number || 'Room'} - 3D View
+            </h2>
             <p className="text-xs text-muted-foreground">
               Click equipment • Drag to rotate
             </p>
@@ -220,10 +245,10 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
         <pointLight position={[3, 2, -3]} intensity={0.3} />
 
         {/* Room Structure */}
-        <Room room={room} />
+        <Room roomData={room} />
 
         {/* Equipment */}
-        {room.equipment.map((item) => (
+        {room.equipment?.map((item: any) => (
           <Equipment
             key={item.id}
             equipment={item}
@@ -252,29 +277,29 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Type:</span>
-              <span className="font-medium">{selectedEquipment.type.replace('_', ' ')}</span>
+              <span className="font-medium">{selectedEquipment.equipment_type?.replace('_', ' ')}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Status:</span>
               <span
                 className={`font-medium ${
-                  selectedEquipment.status === 'active'
+                  selectedEquipment.state === 'in_use'
                     ? 'text-green-600'
-                    : selectedEquipment.status === 'idle'
+                    : selectedEquipment.state === 'idle_ready'
                     ? 'text-yellow-600'
                     : 'text-red-600'
                 }`}
               >
-                {selectedEquipment.status.charAt(0).toUpperCase() +
-                  selectedEquipment.status.slice(1)}
+                {selectedEquipment.state?.charAt(0).toUpperCase() +
+                  selectedEquipment.state?.slice(1).replace('_', ' ')}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Position:</span>
               <span className="font-medium text-xs">
-                X: {selectedEquipment.position.x.toFixed(1)}, Y:{' '}
-                {selectedEquipment.position.y.toFixed(1)}, Z:{' '}
-                {selectedEquipment.position.z.toFixed(1)}
+                X: {(selectedEquipment.position_x ?? 0).toFixed(1)}, Y:{' '}
+                {(selectedEquipment.position_y ?? 0).toFixed(1)}, Z:{' '}
+                {(selectedEquipment.position_z ?? 0).toFixed(1)}
               </span>
             </div>
           </div>
@@ -291,15 +316,15 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Heart Rate:</span>
-              <span className="font-medium">{room.vitals.heartRate} bpm</span>
+              <span className="font-medium">{room.vitals.heart_rate} bpm</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">BP:</span>
-              <span className="font-medium">{room.vitals.bloodPressure}</span>
+              <span className="font-medium">{room.vitals.blood_pressure}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">O2 Sat:</span>
-              <span className="font-medium">{room.vitals.oxygenSaturation}%</span>
+              <span className="font-medium">{room.vitals.oxygen_saturation}%</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Temp:</span>

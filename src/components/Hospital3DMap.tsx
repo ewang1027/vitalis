@@ -2,15 +2,18 @@ import React, { useRef, useState, Suspense } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text, Html } from '@react-three/drei';
 import * as THREE from 'three';
-import { RoomReadiness } from '@/types/wardops';
+import type { Database } from '@/lib/supabase';
+
+type Room = Database['public']['Tables']['rooms']['Row'];
+type Equipment = Database['public']['Tables']['equipment']['Row'];
 
 interface Hospital3DMapProps {
-  roomReadiness: RoomReadiness[];
+  rooms: Room[];
+  equipment: Equipment[];
   onRoomSelect: (roomId: string) => void;
   selectedRoomId: string | null;
   onEnterRoom?: (roomId: string) => void;
   onCloseRoomPopup?: () => void;
-  roomDetails?: any;
 }
 
 // Room component
@@ -33,7 +36,7 @@ function Room({
   roomId: string;
   isSelected: boolean;
   onClick: () => void;
-  roomDetail?: any;
+  roomData?: Room;
   onEnterRoom?: (roomId: string) => void;
   onClosePopup?: () => void;
 }) {
@@ -148,40 +151,13 @@ function Room({
               {label}
             </h3>
 
-            {roomDetail?.patient && (
+            {roomData && (
               <div style={{ marginBottom: '8px', fontSize: '12px' }}>
-                <p style={{ fontWeight: '600', color: '#1f2937' }}>{roomDetail.patient.name}</p>
-                <p style={{ fontSize: '11px', color: '#6b7280' }}>{roomDetail.patient.condition}</p>
-              </div>
-            )}
-
-            {roomDetail?.vitals && (
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '6px',
-                marginBottom: '10px',
-                fontSize: '11px',
-                padding: '8px',
-                background: '#f9fafb',
-                borderRadius: '4px'
-              }}>
-                <div>
-                  <span style={{ color: '#6b7280' }}>HR: </span>
-                  <span style={{ fontWeight: '600', color: '#1f2937' }}>{roomDetail.vitals.heartRate}</span>
-                </div>
-                <div>
-                  <span style={{ color: '#6b7280' }}>O2: </span>
-                  <span style={{ fontWeight: '600', color: '#1f2937' }}>{roomDetail.vitals.oxygenSaturation}%</span>
-                </div>
-                <div>
-                  <span style={{ color: '#6b7280' }}>BP: </span>
-                  <span style={{ fontWeight: '600', color: '#1f2937' }}>{roomDetail.vitals.bloodPressure}</span>
-                </div>
-                <div>
-                  <span style={{ color: '#6b7280' }}>Temp: </span>
-                  <span style={{ fontWeight: '600', color: '#1f2937' }}>{roomDetail.vitals.temperature}°F</span>
-                </div>
+                <p style={{ fontWeight: '600', color: '#1f2937' }}>{roomData.room_name}</p>
+                <p style={{ fontSize: '11px', color: '#6b7280' }}>
+                  Status: {roomData.status} • Type: {roomData.room_type}
+                  {roomData.floor && ` • Floor ${roomData.floor}`}
+                </p>
               </div>
             )}
 
@@ -254,18 +230,37 @@ function LoadingFallback() {
   );
 }
 
-export function Hospital3DMap({ roomReadiness, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup, roomDetails }: Hospital3DMapProps) {
-  const rooms = [
-    { id: 'room-101', position: [-6, 0, -4] as [number, number, number], size: [2.5, 1.5, 2.5] as [number, number, number], label: 'Room 101' },
-    { id: 'room-102', position: [-6, 0, -0.5] as [number, number, number], size: [2.5, 1.5, 2.5] as [number, number, number], label: 'Room 102' },
-    { id: 'room-103', position: [-6, 0, 3] as [number, number, number], size: [2.5, 1.5, 2.5] as [number, number, number], label: 'Room 103' },
-    { id: 'room-104', position: [6, 0, -4] as [number, number, number], size: [2.5, 1.5, 2.5] as [number, number, number], label: 'Room 104' },
-    { id: 'room-105', position: [6, 0, -0.5] as [number, number, number], size: [2.5, 1.5, 2.5] as [number, number, number], label: 'Room 105' },
-    { id: 'room-106', position: [6, 0, 3] as [number, number, number], size: [2.5, 1.5, 2.5] as [number, number, number], label: 'Room 106' },
-    { id: 'nurse-station', position: [0, 0, -4] as [number, number, number], size: [3, 1.5, 2] as [number, number, number], label: 'Nurse Station' },
-    { id: 'storage', position: [0, 0, 3] as [number, number, number], size: [2, 1.5, 2] as [number, number, number], label: 'Storage' },
-  ];
+export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup }: Hospital3DMapProps) {
+  // Transform rooms from database into 3D positions
+  const room3DData = rooms.map((room, index) => {
+    // Use database positions if available, otherwise calculate default positions
+    const position: [number, number, number] = room.position_x !== null && room.position_y !== null && room.position_z !== null
+      ? [room.position_x, room.position_y, room.position_z]
+      : getDefaultPosition(index); // Fallback for rooms without positions
 
+    return {
+      id: room.id,
+      position,
+      size: [2.5, 1.5, 2.5] as [number, number, number],
+      label: room.room_name || room.room_number,
+      roomData: room
+    };
+  });
+
+  // Helper function to calculate default positions for rooms without database positions
+  function getDefaultPosition(index: number): [number, number, number] {
+    const columns = 3;
+    const spacing = 3.5;
+    const row = Math.floor(index / columns);
+    const col = index % columns;
+    return [
+      (col - 1) * spacing,
+      0,
+      (row - 1) * spacing
+    ];
+  }
+
+  // Fixed corridors - these could also come from database in the future
   const corridors = [
     { position: [0, 0, 0] as [number, number, number], length: 16, width: 2, rotation: 0 },
     { position: [-3, 0, -1] as [number, number, number], length: 8, width: 1.5, rotation: Math.PI / 2 },
@@ -273,13 +268,21 @@ export function Hospital3DMap({ roomReadiness, onRoomSelect, selectedRoomId, onE
   ];
 
   const getRoomStatus = (roomId: string): 'ready' | 'needs-attention' | 'in-progress' => {
-    const room = roomReadiness.find(r => r.roomId === roomId);
-    if (!room || !room.equipment || !Array.isArray(room.equipment) || room.equipment.length === 0) {
-      return 'ready';
-    }
+    const room = rooms.find(r => r.id === roomId);
+    if (!room) return 'ready';
 
-    const readyCount = room.equipment.filter(e => e.status === 'ready').length;
-    const totalCount = room.equipment.length;
+    // Map database status to visual status
+    const status = room.status?.toLowerCase();
+    if (status === 'ready' || status === 'available') return 'ready';
+    if (status === 'occupied' || status === 'in-use') return 'in-progress';
+    if (status === 'cleaning' || status === 'maintenance') return 'needs-attention';
+
+    // Alternatively, check equipment in the room
+    const roomEquipment = equipment.filter(e => e.current_room_id === roomId);
+    if (roomEquipment.length === 0) return 'ready';
+
+    const readyCount = roomEquipment.filter(e => e.state === 'idle_ready').length;
+    const totalCount = roomEquipment.length;
 
     if (readyCount === totalCount) return 'ready';
     if (readyCount === 0) return 'needs-attention';
@@ -321,7 +324,7 @@ export function Hospital3DMap({ roomReadiness, onRoomSelect, selectedRoomId, onE
           ))}
 
           {/* Rooms */}
-          {rooms.map((room) => (
+          {room3DData.map((room) => (
             <Room
               key={room.id}
               position={room.position}
@@ -331,7 +334,7 @@ export function Hospital3DMap({ roomReadiness, onRoomSelect, selectedRoomId, onE
               roomId={room.id}
               isSelected={selectedRoomId === room.id}
               onClick={() => onRoomSelect(room.id)}
-              roomDetail={roomDetails?.[room.id]}
+              roomData={room.roomData}
               onEnterRoom={onEnterRoom}
               onClosePopup={onCloseRoomPopup}
             />

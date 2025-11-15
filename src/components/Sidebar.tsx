@@ -25,7 +25,7 @@ import {
 import { toast } from 'sonner';
 
 interface SidebarProps {
-  user: User;
+  user?: User;
   activeTab: string | null;
   onTabChange: (tab: string) => void;
   isMiddlePanelCollapsed?: boolean;
@@ -94,24 +94,25 @@ export function Sidebar({ user, activeTab, onTabChange, isMiddlePanelCollapsed, 
 
       {/* User Card */}
       <div className="p-3 border-t border-white/10">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="w-full rounded-md p-2 flex items-center gap-2 bg-white/5 hover:bg-white/10 transition-smooth">
-              <div className="relative">
-                <div className="h-8 w-8 rounded-full bg-accent-green flex items-center justify-center">
-                  <span className="text-xs font-semibold" style={{ color: 'hsl(var(--text-white))' }}>
-                    {user.name.split(' ').map(n => n[0]).join('')}
-                  </span>
+        {user ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="w-full rounded-md p-2 flex items-center gap-2 bg-white/5 hover:bg-white/10 transition-smooth">
+                <div className="relative">
+                  <div className="h-8 w-8 rounded-full bg-accent-green flex items-center justify-center">
+                    <span className="text-xs font-semibold" style={{ color: 'hsl(var(--text-white))' }}>
+                      {user.name.split(' ').map(n => n[0]).join('')}
+                    </span>
+                  </div>
+                  {user.isOnline && (
+                    <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 bg-green-400 rounded-full border-2" style={{ borderColor: 'hsl(var(--bg-sidebar))' }} />
+                  )}
                 </div>
-                {user.isOnline && (
-                  <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 bg-green-400 rounded-full border-2" style={{ borderColor: 'hsl(var(--bg-sidebar))' }} />
-                )}
-              </div>
-              <div className="flex-1 min-w-0 text-left">
-                <p className="text-xs font-medium truncate" style={{ color: 'hsl(var(--text-white))' }}>{user.name}</p>
-                <p className="text-xs truncate" style={{ color: 'hsl(var(--text-white-dim))' }}>{user.role}</p>
-              </div>
-              <ChevronDown className="h-3 w-3 flex-shrink-0" style={{ color: 'hsl(var(--text-white-dim))' }} />
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-xs font-medium truncate" style={{ color: 'hsl(var(--text-white))' }}>{user.name}</p>
+                  <p className="text-xs truncate" style={{ color: 'hsl(var(--text-white-dim))' }}>{user.role}</p>
+                </div>
+                <ChevronDown className="h-3 w-3 flex-shrink-0" style={{ color: 'hsl(var(--text-white-dim))' }} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -147,6 +148,16 @@ export function Sidebar({ user, activeTab, onTabChange, isMiddlePanelCollapsed, 
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        ) : (
+          <div className="w-full rounded-md p-2 flex items-center gap-2 bg-white/5">
+            <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center">
+              <UserIcon className="h-4 w-4" style={{ color: 'hsl(var(--text-white-dim))' }} />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-xs" style={{ color: 'hsl(var(--text-white-dim))' }}>Loading...</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

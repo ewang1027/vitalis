@@ -5,14 +5,15 @@ import { Hospital3DMap } from '@/components/Hospital3DMap';
 import { NotificationBell } from '@/components/NotificationBell';
 import { RoomDetailView } from '@/components/RoomDetailView';
 import {
-  mockUser,
-  mockAssets,
-  mockTasks,
-  mockRoomReadiness,
-  mockChatHistory,
-} from '@/data/mockData';
-import { mockNotifications } from '@/data/mockNotifications';
-import { mockRoomDetails } from '@/data/mockRoomDetails';
+  useCurrentUser,
+  useEquipment,
+  useTasks,
+  useNotifications,
+  useChatMessages,
+  useRoomDetails,
+  useRooms,
+  usePatients,
+} from '@/hooks/useSupabaseData';
 import { Task } from '@/types/wardops';
 import { Notification } from '@/types/notifications';
 import { toast } from 'sonner';
@@ -22,11 +23,28 @@ import { Button } from '@/components/ui/button';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<string | null>(null);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | null>('room-101');
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [isMiddlePanelCollapsed, setIsMiddlePanelCollapsed] = useState(false);
   const [roomDetailViewId, setRoomDetailViewId] = useState<string | null>(null);
+
+  // Fetch data from Supabase
+  const { user: supabaseUser } = useCurrentUser();
+  const { equipment } = useEquipment();
+  const { tasks, setTasks } = useTasks();
+  const { notifications, setNotifications } = useNotifications(supabaseUser?.id);
+  const { messages: chatHistory } = useChatMessages();
+  const { rooms } = useRooms();
+  const { roomDetails } = useRoomDetails(roomDetailViewId || '');
+  const { patients } = usePatients();
+
+  // Transform Supabase user to match User type
+  const user = supabaseUser ? {
+    id: supabaseUser.id,
+    name: supabaseUser.name,
+    role: supabaseUser.role,
+    avatarUrl: supabaseUser.avatar_url || undefined,
+    isOnline: supabaseUser.is_online
+  } : undefined;
 
   const handleTaskComplete = (taskId: string) => {
     setTasks(tasks.map(t => 
@@ -87,7 +105,7 @@ const Index = () => {
     <div className="flex h-screen w-full overflow-hidden" style={{ backgroundColor: 'hsl(var(--bg-map))' }}>
       {/* Left Sidebar - Always Visible */}
       <Sidebar
-        user={mockUser}
+        user={user}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         isMiddlePanelCollapsed={isMiddlePanelCollapsed}
@@ -98,25 +116,25 @@ const Index = () => {
       <ResizablePanelGroup direction="horizontal" className="flex-1">
         {/* Right Panel - Map View (Always Visible) - First in DOM for correct resize behavior */}
         <ResizablePanel
-          defaultSize={activeTab ? (isMiddlePanelCollapsed ? 100 : 80) : 100}
+          defaultSize={activeTab ? (isMiddlePanelCollapsed ? 100 : 70) : 100}
           minSize={50}
           className="order-2"
         >
           <div className="h-full border-l relative" style={{ borderColor: 'hsl(var(--border-light))', backgroundColor: 'hsl(var(--bg-map))' }}>
             {/* Conditionally render Hospital Map or Room Detail View */}
-            {roomDetailViewId && mockRoomDetails[roomDetailViewId] ? (
+            {roomDetailViewId && roomDetails ? (
               <RoomDetailView
-                room={mockRoomDetails[roomDetailViewId]}
+                room={roomDetails}
                 onExit={handleExitRoomView}
               />
             ) : (
               <Hospital3DMap
-                roomReadiness={mockRoomReadiness}
+                rooms={rooms}
+                equipment={equipment}
                 onRoomSelect={handleRoomSelect}
                 selectedRoomId={selectedRoomId}
                 onEnterRoom={handleEnterRoom}
                 onCloseRoomPopup={handleCloseRoomPopup}
-                roomDetails={mockRoomDetails}
               />
             )}
 
@@ -139,7 +157,7 @@ const Index = () => {
             {/* Draggable Resize Handle */}
             <ResizableHandle className="w-1 cursor-col-resize order-1" style={{ backgroundColor: 'hsl(var(--border-medium))' }} />
 
-            <ResizablePanel defaultSize={20} minSize={15} maxSize={30} collapsible={true} className="order-0">
+            <ResizablePanel defaultSize={30} minSize={15} maxSize={50} collapsible={true} className="order-0">
               <div className="h-full flex flex-col" style={{ backgroundColor: 'hsl(var(--bg-middle))' }}>
                 {/* Header with collapse button */}
                 <div className="border-b p-3 flex items-center justify-between flex-shrink-0" style={{ borderColor: 'hsl(var(--border-light))' }}>
@@ -165,7 +183,17 @@ const Index = () => {
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto scrollbar-hide">
                   {activeTab === 'ask' ? (
-                    <ChatInterface initialMessages={mockChatHistory} />
+                    <ChatInterface
+                      initialMessages={chatHistory}
+                      userId={supabaseUser?.id}
+                      roomId={selectedRoomId}
+                      contextData={{
+                        rooms,
+                        equipment,
+                        tasks,
+                        patients
+                      }}
+                    />
                   ) : (
                     <div className="p-6 flex-1">
                       <div className="rounded-lg p-8 text-center" style={{ backgroundColor: 'hsl(var(--bg-tertiary))' }}>
