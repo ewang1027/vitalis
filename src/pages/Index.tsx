@@ -32,7 +32,7 @@ const Index = () => {
   const { equipment } = useEquipment();
   const { tasks, setTasks } = useTasks();
   const { notifications, setNotifications } = useNotifications(supabaseUser?.id);
-  const { messages: chatHistory } = useChatMessages();
+  const { messages: chatHistory } = useChatMessages(selectedRoomId || undefined);
   const { rooms } = useRooms();
   const { roomDetails } = useRoomDetails(roomDetailViewId || '');
   const { patients } = usePatients();
@@ -164,8 +164,8 @@ const Index = () => {
                   <h3 className="text-sm font-semibold truncate min-w-0" style={{ color: 'hsl(var(--text-dark))' }}>
                     {activeTab === 'ask'
                       ? selectedRoomId
-                        ? `Ask Vitalis (${selectedRoomId.replace('room-', 'Room ')})`
-                        : 'Ask Vitalis'
+                        ? `Ask Vitalis (${rooms.find(r => r.id === selectedRoomId)?.room_name || rooms.find(r => r.id === selectedRoomId)?.room_number || 'Room'})`
+                        : 'Ask Vitalis (General)'
                       : activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
                   </h3>
                   <Button
