@@ -95,6 +95,13 @@ All colors MUST be HSL.
       hsl(var(--bg-primary)) 100%);
   }
 
+  /* Welcome Screen Gradient - TODO: Replace with exact colors */
+  .welcome-gradient {
+    background: linear-gradient(180deg,
+      hsl(142, 45%, 15%) 0%,    /* Dark green (top) */
+      hsl(142, 50%, 35%) 100%); /* Light green (bottom) */
+  }
+
   /* Hide Scrollbar but keep functionality */
   .scrollbar-hide {
     -ms-overflow-style: none;  /* IE and Edge */
