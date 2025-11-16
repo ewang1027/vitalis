@@ -7,6 +7,8 @@ import type { Asset } from '@/types/wardops';
 import { useTaskSubscription } from '@/hooks/useTaskSubscription';
 import { TaskPaths } from './TaskPathAnimation';
 import { RoomTaskIndicators } from './RoomTaskIndicator';
+import { RoomInfoPopup } from './RoomInfoPopup';
+import { supabase } from '@/lib/supabase';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
 
@@ -262,17 +264,20 @@ function CameraController({
       ref={controlsRef}
       enableDamping
       dampingFactor={0.05}
-      minDistance={10}
-      maxDistance={50}
+      minDistance={5}
+      maxDistance={150}
+      enablePan={true}
+      maxPolarAngle={Math.PI} // Allow full vertical rotation
+      minPolarAngle={0}
     />
   );
 }
 
-// Hallway connecting rooms - medium gray floor
+// Clean hallway corridor with defined edges
 function Hallway({
   start,
   end,
-  width = 1.5
+  width = 4
 }: {
   start: [number, number, number];
   end: [number, number, number];
@@ -288,10 +293,69 @@ function Hallway({
   const angle = Math.atan2(end[2] - start[2], end[0] - start[0]);
 
   return (
-    <mesh position={[midX, -1.05, midZ]} rotation={[0, angle, 0]} receiveShadow>
-      <boxGeometry args={[length, 0.1, width]} />
-      <meshStandardMaterial color="#9ca3af" roughness={0.7} />
-    </mesh>
+    <group position={[midX, 0, midZ]} rotation={[0, angle, 0]}>
+      {/* Main corridor floor - darker than base floor */}
+      <mesh position={[0, -0.08, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[length, width]} />
+        <meshStandardMaterial 
+          color="#374151" 
+          roughness={0.7}
+          metalness={0.1}
+        />
+      </mesh>
+
+      {/* Center stripe for direction guidance */}
+      <mesh position={[0, -0.07, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[length, 0.3]} />
+        <meshStandardMaterial 
+          color="#4b5563" 
+          roughness={0.8}
+        />
+      </mesh>
+
+      {/* Edge lines - left */}
+      <mesh position={[0, -0.06, -width / 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[length, 0.1]} />
+        <meshStandardMaterial 
+          color="#6b7280" 
+          roughness={0.5}
+        />
+      </mesh>
+
+      {/* Edge lines - right */}
+      <mesh position={[0, -0.06, width / 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[length, 0.1]} />
+        <meshStandardMaterial 
+          color="#6b7280" 
+          roughness={0.5}
+        />
+      </mesh>
+    </group>
+  );
+}
+
+// Hallway intersection piece
+function HallwayIntersection({ position, size = 4 }: { position: [number, number, number]; size?: number }) {
+  return (
+    <group position={position}>
+      {/* Intersection floor */}
+      <mesh position={[0, -0.08, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[size, size]} />
+        <meshStandardMaterial 
+          color="#374151" 
+          roughness={0.7}
+          metalness={0.1}
+        />
+      </mesh>
+      {/* Center marker */}
+      <mesh position={[0, -0.07, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <circleGeometry args={[0.5, 32]} />
+        <meshStandardMaterial 
+          color="#4b5563" 
+          roughness={0.8}
+        />
+      </mesh>
+    </group>
   );
 }
 
@@ -306,11 +370,13 @@ function createHospitalLayout(rooms: Room[]): {
   hallways: Array<{ start: [number, number, number]; end: [number, number, number] }>;
   floorSections: Array<{ position: [number, number, number]; size: [number, number] }>;
   walls: Array<{ position: [number, number, number]; width: number; rotation: number; label: string }>;
+  intersections: Array<{ position: [number, number, number] }>;
 } {
   const roomLayouts = new Map();
   const hallways: Array<{ start: [number, number, number]; end: [number, number, number] }> = [];
   const floorSections: Array<{ position: [number, number, number]; size: [number, number] }> = [];
   const walls: Array<{ position: [number, number, number]; width: number; rotation: number; label: string }> = [];
+  const intersections: Array<{ position: [number, number, number] }> = [];
 
   // Layout parameters
   const perimeterWidth = 50;
@@ -503,11 +569,30 @@ function createHospitalLayout(rooms: Room[]): {
     }
   });
 
+  // Add hallway intersections at key points
+  // Corner intersections
+  intersections.push(
+    { position: [-perimeterWidth / 2, 0, -perimeterHeight / 2] }, // NW
+    { position: [perimeterWidth / 2, 0, -perimeterHeight / 2] },  // NE
+    { position: [perimeterWidth / 2, 0, perimeterHeight / 2] },   // SE
+    { position: [-perimeterWidth / 2, 0, perimeterHeight / 2] }   // SW
+  );
+
+  // Cross-hallway intersections
+  intersections.push(
+    { position: [-perimeterWidth / 2, 0, 0] }, // West-Horizontal
+    { position: [perimeterWidth / 2, 0, 0] },  // East-Horizontal
+    { position: [0, 0, -perimeterHeight / 2] }, // North-Vertical
+    { position: [0, 0, perimeterHeight / 2] },  // South-Vertical
+    { position: [0, 0, 0] }  // Center intersection
+  );
+
   return {
     roomLayouts,
     hallways,
     floorSections,
     walls, // Empty array - no walls
+    intersections,
   };
 }
 
@@ -545,6 +630,7 @@ function Hospital2DMap({
   roomLayouts,
   hallways,
   floorSections,
+  intersections,
   selectedRoomId,
   onRoomSelect,
   getRoomStatus
@@ -558,6 +644,7 @@ function Hospital2DMap({
   }>;
   hallways: Array<{ start: [number, number, number]; end: [number, number, number] }>;
   floorSections: Array<{ position: [number, number, number]; size: [number, number] }>;
+  intersections: Array<{ position: [number, number, number] }>;
   selectedRoomId: string | null;
   onRoomSelect: (roomId: string) => void;
   getRoomStatus: (roomId: string) => 'ready' | 'needs-attention' | 'occupied';
@@ -646,17 +733,46 @@ function Hospital2DMap({
 
         {/* Hallways - corridor structure */}
         {hallways.map((hallway, index) => (
-          <line
-            key={`hallway-${index}`}
-            x1={hallway.start[0]}
-            y1={hallway.start[2]}
-            x2={hallway.end[0]}
-            y2={hallway.end[2]}
-            stroke="#9ca3af"
-            strokeWidth={0.8}
-            opacity={0.6}
-            strokeLinecap="round"
-          />
+          <g key={`hallway-${index}`}>
+            {/* Main corridor */}
+            <line
+              x1={hallway.start[0]}
+              y1={hallway.start[2]}
+              x2={hallway.end[0]}
+              y2={hallway.end[2]}
+              stroke="#374151"
+              strokeWidth={4}
+              strokeLinecap="round"
+            />
+            {/* Center stripe */}
+            <line
+              x1={hallway.start[0]}
+              y1={hallway.start[2]}
+              x2={hallway.end[0]}
+              y2={hallway.end[2]}
+              stroke="#4b5563"
+              strokeWidth={0.4}
+              strokeLinecap="round"
+            />
+          </g>
+        ))}
+
+        {/* Hallway intersections */}
+        {intersections.map((intersection, index) => (
+          <g key={`intersection-2d-${index}`}>
+            <circle
+              cx={intersection.position[0]}
+              cy={intersection.position[2]}
+              r={2}
+              fill="#374151"
+            />
+            <circle
+              cx={intersection.position[0]}
+              cy={intersection.position[2]}
+              r={0.5}
+              fill="#4b5563"
+            />
+          </g>
         ))}
 
         {/* Central Command Station */}
@@ -751,12 +867,18 @@ export function Hospital3DMap({
   rooms,
   equipment,
   onRoomSelect,
-  selectedRoomId
+  selectedRoomId,
+  onEnterRoom,
+  onCloseRoomPopup
 }: Hospital3DMapProps) {
-  const { roomLayouts, hallways, floorSections, walls } = useMemo(() => createHospitalLayout(rooms), [rooms]);
+  const { roomLayouts, hallways, floorSections, walls, intersections } = useMemo(() => createHospitalLayout(rooms), [rooms]);
   const [showPopup, setShowPopup] = useState(false);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
   const [is3DView, setIs3DView] = useState(true);
+  const [popupData, setPopupData] = useState<{
+    patient: { name: string; condition?: string | null; severity?: string | null } | null;
+    doctor: { name: string; specialization?: string | null } | null;
+  }>({ patient: null, doctor: null });
 
   // Debug logging
   useEffect(() => {
@@ -818,8 +940,74 @@ export function Hospital3DMap({
   const selectedRoom = selectedRoomId ? rooms.find(r => r.id === selectedRoomId) : null;
   const selectedRoomLayout = selectedRoomId ? roomLayouts.get(selectedRoomId) : null;
 
+  // Fetch patient and doctor data when room is selected
   useEffect(() => {
-    setShowPopup(!!selectedRoomId);
+    if (!selectedRoomId) {
+      setShowPopup(false);
+      setPopupData({ patient: null, doctor: null });
+      return;
+    }
+
+    setShowPopup(true);
+
+    async function fetchRoomInfo() {
+      try {
+        // Fetch active assignment for this room
+        const { data: assignment } = await supabase
+          .from('room_assignments')
+          .select('patient_id, assigned_doctor_id')
+          .eq('room_id', selectedRoomId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+        if (!assignment) {
+          setPopupData({ patient: null, doctor: null });
+          return;
+        }
+
+        // Fetch patient data if exists
+        let patientData = null;
+        if (assignment.patient_id) {
+          const { data: patient } = await supabase
+            .from('patients')
+            .select('name, condition, severity')
+            .eq('id', assignment.patient_id)
+            .maybeSingle();
+
+          if (patient) {
+            patientData = {
+              name: patient.name,
+              condition: patient.condition,
+              severity: patient.severity
+            };
+          }
+        }
+
+        // Fetch doctor data if exists
+        let doctorData = null;
+        if (assignment.assigned_doctor_id) {
+          const { data: doctor } = await supabase
+            .from('staff')
+            .select('name, specialty')
+            .eq('id', assignment.assigned_doctor_id)
+            .maybeSingle();
+
+          if (doctor) {
+            doctorData = {
+              name: doctor.name,
+              specialization: doctor.specialty
+            };
+          }
+        }
+
+        setPopupData({ patient: patientData, doctor: doctorData });
+      } catch (error) {
+        console.error('Error fetching room info:', error);
+        setPopupData({ patient: null, doctor: null });
+      }
+    }
+
+    fetchRoomInfo();
   }, [selectedRoomId]);
 
   return (
@@ -907,6 +1095,23 @@ export function Hospital3DMap({
             <FloorSection key={`floor-${index}`} position={floor.position} size={floor.size} />
           ))}
 
+          {/* Hallways - connecting corridors */}
+          {hallways.map((hallway, index) => (
+            <Hallway
+              key={`hallway-${index}`}
+              start={hallway.start}
+              end={hallway.end}
+            />
+          ))}
+
+          {/* Hallway intersections */}
+          {intersections.map((intersection, index) => (
+            <HallwayIntersection
+              key={`intersection-${index}`}
+              position={intersection.position}
+            />
+          ))}
+
           {/* Perimeter walls */}
           {/* {walls.map((wall, index) => (
             <PerimeterWall
@@ -948,6 +1153,7 @@ export function Hospital3DMap({
           roomLayouts={roomLayouts}
           hallways={hallways}
           floorSections={floorSections}
+          intersections={intersections}
           selectedRoomId={selectedRoomId}
           onRoomSelect={onRoomSelect}
           getRoomStatus={getRoomStatus}
@@ -995,36 +1201,6 @@ export function Hospital3DMap({
         </div>
       </div>
 
-      {/* Status Legend */}
-      <div style={{
-        position: 'absolute',
-        top: '80px',
-        left: '16px',
-        background: 'rgba(31, 41, 55, 0.95)',
-        borderRadius: '8px',
-        padding: '12px',
-        color: 'white',
-        border: '1px solid rgba(255, 255, 255, 0.1)'
-      }}>
-        <h3 style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px' }}>
-          Room Status
-        </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '16px', height: '16px', background: '#10b981', borderRadius: '2px' }}></div>
-            <span>Ready</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '16px', height: '16px', background: '#f59e0b', borderRadius: '2px' }}></div>
-            <span>Occupied</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '16px', height: '16px', background: '#ef4444', borderRadius: '2px' }}></div>
-            <span>Needs Attention</span>
-          </div>
-        </div>
-      </div>
-
       {/* Controls */}
       {is3DView && (
         <div style={{
@@ -1040,6 +1216,28 @@ export function Hospital3DMap({
         }}>
           Drag to rotate • Scroll to zoom • Click rooms
         </div>
+      )}
+
+      {/* Room Info Popup */}
+      {selectedRoom && (
+        <RoomInfoPopup
+          open={showPopup}
+          onOpenChange={(open) => {
+            if (!open && onCloseRoomPopup) {
+              onCloseRoomPopup();
+            }
+          }}
+          room={selectedRoom}
+          patient={popupData.patient}
+          doctor={popupData.doctor}
+          position={popupPosition}
+          onEnterRoom={() => {
+            if (onEnterRoom && selectedRoomId) {
+              onEnterRoom(selectedRoomId);
+              setShowPopup(false);
+            }
+          }}
+        />
       )}
 
     </div>
