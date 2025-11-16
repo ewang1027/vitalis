@@ -216,43 +216,74 @@ export async function checkInPatient(params: {
 }
 
 /**
- * Discharge a patient
+ * Discharge a patient by name or ID
  */
 export async function dischargePatient(params: {
-  patientId: string;
+  patientId?: string;
+  patientName?: string;
 }): Promise<ToolResult> {
   try {
-    const { patientId } = params;
+    const { patientId, patientName } = params;
 
-    // Get patient and assignment
-    const { data: patient } = await supabase
-      .from('patients')
-      .select('*')
-      .eq('id', patientId)
-      .single();
+    console.log('🚪 [DISCHARGE] Starting patient discharge...', { patientId, patientName });
+
+    // Find patient by name or ID
+    let patient;
+    if (patientName) {
+      console.log('🔍 [DISCHARGE] Looking up patient by name:', patientName);
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .ilike('name', patientName)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('❌ [DISCHARGE] Error looking up patient:', error);
+      }
+      patient = data;
+    } else if (patientId) {
+      console.log('🔍 [DISCHARGE] Looking up patient by ID:', patientId);
+      const { data } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('id', patientId)
+        .single();
+      patient = data;
+    }
 
     if (!patient) {
+      console.error('❌ [DISCHARGE] Patient not found');
       return {
         success: false,
-        message: 'Patient not found',
+        message: `Patient not found${patientName ? ` with name: ${patientName}` : ''}`,
       };
     }
+
+    console.log('✅ [DISCHARGE] Found patient:', patient.name, patient.id);
 
     const { data: assignment } = await supabase
       .from('room_assignments')
       .select('*')
-      .eq('patient_id', patientId)
+      .eq('patient_id', patient.id)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
+
+    if (assignment) {
+      console.log('✅ [DISCHARGE] Found room assignment:', assignment.room_id);
+    } else {
+      console.warn('⚠️ [DISCHARGE] No active room assignment found');
+    }
 
     // Update patient status
+    console.log('🔄 [DISCHARGE] Marking patient as discharged...');
     await supabase
       .from('patients')
       .update({
         is_active: false,
         discharge_date: new Date().toISOString(),
       })
-      .eq('id', patientId);
+      .eq('id', patient.id);
 
     // Deactivate room assignment
     if (assignment) {

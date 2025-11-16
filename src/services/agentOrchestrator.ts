@@ -336,6 +336,20 @@ const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'discharge_patient',
+      description: 'Discharge patient by name',
+      parameters: {
+        type: 'object',
+        properties: {
+          patientName: { type: 'string', description: 'Patient name' },
+        },
+        required: ['patientName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_room_context',
       description: 'Get room details',
       parameters: {
@@ -453,19 +467,19 @@ export async function runAgent(
 
 TOOLS:
 - check_in_patient(name, age, gender, condition, severity) - Automatically finds room
-- discharge_patient(patientId)
+- discharge_patient(patientName) - Discharge by patient name
 - create_task(taskType, targetRoomId, priority)
 - get_room_context(room_identifier)
-- get_patient_context(patient_identifier)
-- find_available_room()
 
 RULES:
-1. If user provides patient info (name, age, gender), CALL check_in_patient immediately
-2. Default: severity="stable", capitalize gender (Male/Female/Other)
-3. After tool execution, briefly explain what happened
-4. Extract info from conversation - if you asked for patient details and user replied, USE TOOL NOW
+1. Check-in: If user provides patient info (name, age, gender), CALL check_in_patient immediately
+2. Discharge: If user says "discharge [name]", CALL discharge_patient({patientName: "name"})
+3. Default: severity="stable", capitalize gender (Male/Female/Other)
+4. After tool execution, briefly explain what happened
 
-Example: User says "Bob Bob, 22, male, critical" -> Call check_in_patient({name:"Bob Bob", age:22, gender:"Male", condition:"critical illness", severity:"critical"})`,
+Examples:
+- "Bob Bob, 22, male, critical" -> check_in_patient({name:"Bob Bob", age:22, gender:"Male", condition:"critical", severity:"critical"})
+- "discharge Sarah Johnson" -> discharge_patient({patientName:"Sarah Johnson"})`,
     },
     ...sanitizedHistory,
     sanitizeMessage({
