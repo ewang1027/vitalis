@@ -371,20 +371,34 @@ export function extractRoomNumber(text: string): number | null {
  */
 export async function findAvailableRoom(roomType?: string): Promise<any | null> {
   try {
+    console.log('🔍 [FIND_ROOM] Searching for available room...', roomType ? `Type: ${roomType}` : 'Any type');
+    
     let query = supabase
       .from('rooms')
       .select('*')
-      .eq('status', 'available');
+      .in('status', ['ready', 'available']); // Check both 'ready' and 'available' statuses
 
     if (roomType) {
       query = query.eq('room_type', roomType);
     }
 
-    const { data: rooms } = await query.limit(1);
+    const { data: rooms, error } = await query.order('room_number', { ascending: true }).limit(1);
+
+    if (error) {
+      console.error('❌ [FIND_ROOM] Database error:', error);
+      return null;
+    }
+
+    console.log('🔍 [FIND_ROOM] Found rooms:', rooms?.length || 0);
+    if (rooms && rooms.length > 0) {
+      console.log('✅ [FIND_ROOM] Selected room:', rooms[0].id, rooms[0].room_number, 'Status:', rooms[0].status);
+    } else {
+      console.warn('⚠️ [FIND_ROOM] No available rooms found!');
+    }
 
     return rooms && rooms.length > 0 ? rooms[0] : null;
   } catch (error) {
-    console.error('Error finding available room:', error);
+    console.error('❌ [FIND_ROOM] Error finding available room:', error);
     return null;
   }
 }

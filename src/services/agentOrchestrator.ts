@@ -639,7 +639,7 @@ Today: ${new Date().toLocaleDateString()}`,
         const requestBody: any = {
           model: modelName,
           messages,
-          max_tokens: 1000, // Increased for better responses
+          max_tokens: 500, // Keep moderate to prevent payload issues
           temperature: 0.7,
           tools: AGENT_TOOLS,
           tool_choice: 'auto',
