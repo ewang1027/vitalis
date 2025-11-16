@@ -30,6 +30,7 @@ interface SidebarProps {
   onTabChange: (tab: string) => void;
   isMiddlePanelCollapsed?: boolean;
   onExpandMiddlePanel?: () => void;
+  onLogout?: () => void;
 }
 
 const navItems = [
@@ -41,7 +42,7 @@ const navItems = [
   { id: 'reports', label: 'Reports', icon: FileText },
 ];
 
-export function Sidebar({ user, activeTab, onTabChange, isMiddlePanelCollapsed, onExpandMiddlePanel }: SidebarProps) {
+export function Sidebar({ user, activeTab, onTabChange, isMiddlePanelCollapsed, onExpandMiddlePanel, onLogout }: SidebarProps) {
   return (
     <div className="flex h-screen w-40 flex-col border-r border-border-medium" style={{ backgroundColor: 'hsl(var(--bg-sidebar))' }}>
       {/* Logo Section */}
@@ -138,8 +139,10 @@ export function Sidebar({ user, activeTab, onTabChange, isMiddlePanelCollapsed, 
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
-                toast.success('Logged out successfully');
-                // Add actual logout logic here
+                if (onLogout) {
+                  onLogout();
+                  toast.success('Logged out successfully');
+                }
               }}
               className="text-red-600 focus:text-red-600"
             >

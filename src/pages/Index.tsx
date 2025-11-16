@@ -22,7 +22,11 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const Index = () => {
+interface IndexProps {
+  onLogout?: () => void;
+}
+
+const Index = ({ onLogout }: IndexProps) => {
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [isMiddlePanelCollapsed, setIsMiddlePanelCollapsed] = useState(false);
@@ -111,6 +115,7 @@ const Index = () => {
         onTabChange={setActiveTab}
         isMiddlePanelCollapsed={isMiddlePanelCollapsed}
         onExpandMiddlePanel={() => setIsMiddlePanelCollapsed(false)}
+        onLogout={onLogout}
       />
 
       {/* Main Content Area - Map always visible, middle panel conditional */}
@@ -152,7 +157,7 @@ const Index = () => {
 
             {/* ESP32 Hardware Monitor Widget - Only show when not in room detail view */}
             {!roomDetailViewId && (
-              <div style={{ position: 'absolute', bottom: '16px', right: '16px', zIndex: 100 }}>
+              <div style={{ position: 'absolute', bottom: '50px', right: '16px', zIndex: 100 }}>
                 <ESP32Widget />
               </div>
             )}

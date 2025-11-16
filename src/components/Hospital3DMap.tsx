@@ -662,7 +662,7 @@ export function Hospital3DMap({
       {/* Controls */}
       <div style={{
         position: 'absolute',
-        bottom: '16px',
+        bottom: '10px',
         right: '16px',
         background: 'rgba(31, 41, 55, 0.95)',
         borderRadius: '8px',
