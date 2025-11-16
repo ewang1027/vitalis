@@ -4,6 +4,7 @@ import { WardMap } from './WardMap';
 import { RoomDetails } from './RoomDetails';
 import { TaskQueue } from './TaskQueue';
 import { NotificationPanel } from './NotificationPanel';
+import { PatientVitalsDashboard } from './PatientVitalsDashboard';
 import { Asset, RoomReadiness, Task } from '@/types/wardops';
 import { Notification } from '@/types/notifications';
 import { Button } from './ui/button';
@@ -132,11 +133,7 @@ export function RightSidebar({
         )}
 
         {activeTab === 'dashboard' && (
-          <div className="p-6 min-w-0">
-            <div className="glass-panel rounded-lg p-6 min-w-0">
-              <p className="text-sm text-text-secondary break-words">Dashboard metrics will appear here</p>
-            </div>
-          </div>
+          <PatientVitalsDashboard />
         )}
 
         {activeTab === 'inventory' && (
