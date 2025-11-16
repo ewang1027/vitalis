@@ -10,6 +10,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { HospitalBed } from '@/components/3d/HospitalBed';
+import { OxygenTank } from '@/components/3d/OxygenTank';
+import { IVPump } from '@/components/3d/IVPump';
+import { MedicalMonitor } from '@/components/3d/MedicalMonitor';
+import { Wheelchair } from '@/components/3d/Wheelchair';
 
 // Type for room details from useRoomDetails hook
 interface RoomDetailViewProps {
@@ -40,52 +45,6 @@ interface EquipmentProps {
 
 function Equipment({ equipment, onClick }: EquipmentProps) {
   const [hovered, setHovered] = useState(false);
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  // Different colors and shapes for different equipment types
-  const getEquipmentVisuals = () => {
-    const equipmentType = equipment.equipment_type.toLowerCase();
-    switch (equipmentType) {
-      case 'bed':
-        return {
-          geometry: <boxGeometry args={[2, 0.5, 1]} />,
-          color: hovered ? '#60a5fa' : '#3b82f6',
-          scale: 1,
-        };
-      case 'monitor':
-        return {
-          geometry: <boxGeometry args={[0.4, 0.6, 0.1]} />,
-          color: hovered ? '#34d399' : '#10b981',
-          scale: 1,
-        };
-      case 'iv_pump':
-        return {
-          geometry: <boxGeometry args={[0.3, 0.8, 0.3]} />,
-          color: hovered ? '#fbbf24' : '#f59e0b',
-          scale: 1,
-        };
-      case 'wheelchair':
-        return {
-          geometry: <boxGeometry args={[0.6, 0.8, 0.6]} />,
-          color: hovered ? '#a78bfa' : '#8b5cf6',
-          scale: 1,
-        };
-      case 'oxygen_tank':
-        return {
-          geometry: <cylinderGeometry args={[0.15, 0.15, 1.2, 16]} />,
-          color: hovered ? '#f472b6' : '#ec4899',
-          scale: 1,
-        };
-      default:
-        return {
-          geometry: <boxGeometry args={[0.5, 0.5, 0.5]} />,
-          color: hovered ? '#9ca3af' : '#6b7280',
-          scale: 1,
-        };
-    }
-  };
-
-  const visuals = getEquipmentVisuals();
 
   const position: [number, number, number] = [
     equipment.position_x ?? 0,
@@ -95,24 +54,85 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
 
   const equipmentType = equipment.equipment_type.toLowerCase();
 
+  // Render detailed 3D component based on equipment type
+  const renderEquipmentModel = () => {
+    const handleClick = () => {
+      onClick();
+    };
+
+    switch (equipmentType) {
+      case 'bed':
+        return (
+          <HospitalBed
+            position={position}
+            onClick={handleClick}
+            hovered={hovered}
+          />
+        );
+      case 'oxygen_tank':
+        return (
+          <OxygenTank
+            position={position}
+            onClick={handleClick}
+            hovered={hovered}
+          />
+        );
+      case 'iv_pump':
+        return (
+          <IVPump
+            position={position}
+            onClick={handleClick}
+            hovered={hovered}
+          />
+        );
+      case 'monitor':
+        return (
+          <MedicalMonitor
+            position={position}
+            onClick={handleClick}
+            hovered={hovered}
+          />
+        );
+      case 'wheelchair':
+        return (
+          <Wheelchair
+            position={position}
+            onClick={handleClick}
+            hovered={hovered}
+          />
+        );
+      default:
+        // Fallback to simple box for unknown equipment types
+        return (
+          <group position={position}>
+            <mesh onClick={handleClick}>
+              <boxGeometry args={[0.5, 0.5, 0.5]} />
+              <meshStandardMaterial
+                color={hovered ? '#9ca3af' : '#6b7280'}
+                emissive={hovered ? '#9ca3af' : '#000000'}
+                emissiveIntensity={hovered ? 0.3 : 0}
+              />
+            </mesh>
+          </group>
+        );
+    }
+  };
+
   return (
-    <group position={position}>
-      <mesh
-        ref={meshRef}
-        onClick={onClick}
-        onPointerOver={() => setHovered(true)}
-        onPointerOut={() => setHovered(false)}
-      >
-        {visuals.geometry}
-        <meshStandardMaterial
-          color={visuals.color}
-          emissive={hovered ? visuals.color : '#000000'}
-          emissiveIntensity={hovered ? 0.3 : 0}
-        />
-      </mesh>
+    <group
+      onPointerOver={() => setHovered(true)}
+      onPointerOut={() => setHovered(false)}
+    >
+      {renderEquipmentModel()}
+
+      {/* Equipment name label when hovered */}
       {hovered && (
         <Text
-          position={[0, equipmentType === 'bed' ? 1 : 1.2, 0]}
+          position={[
+            position[0],
+            position[1] + (equipmentType === 'bed' ? 1.2 : equipmentType === 'iv_pump' ? 2.2 : 1.5),
+            position[2]
+          ]}
           fontSize={0.2}
           color="white"
           anchorX="center"
@@ -121,8 +141,13 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
           {equipment.name}
         </Text>
       )}
+
       {/* Status indicator */}
-      <mesh position={[0, equipmentType === 'bed' ? 0.8 : 1.5, 0]}>
+      <mesh position={[
+        position[0],
+        position[1] + (equipmentType === 'bed' ? 1.0 : equipmentType === 'iv_pump' ? 2.0 : 1.3),
+        position[2]
+      ]}>
         <sphereGeometry args={[0.08, 16, 16]} />
         <meshBasicMaterial
           color={
