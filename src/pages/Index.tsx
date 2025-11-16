@@ -4,6 +4,7 @@ import { ChatInterface } from '@/components/ChatInterface';
 import { Hospital3DMap } from '@/components/Hospital3DMap';
 import { NotificationBell } from '@/components/NotificationBell';
 import { RoomDetailView } from '@/components/RoomDetailView';
+import { ESP32Widget } from '@/components/ESP32Widget';
 import {
   useCurrentUser,
   useEquipment,
@@ -146,6 +147,13 @@ const Index = () => {
                   onNotificationRead={handleNotificationRead}
                   onNotificationDismiss={handleNotificationDismiss}
                 />
+              </div>
+            )}
+
+            {/* ESP32 Hardware Monitor Widget - Only show when not in room detail view */}
+            {!roomDetailViewId && (
+              <div style={{ position: 'absolute', bottom: '16px', right: '16px', zIndex: 100 }}>
+                <ESP32Widget />
               </div>
             )}
           </div>
