@@ -25,6 +25,13 @@ import {
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+// Model options with fallbacks
+const MODELS = {
+  primary: 'anthropic/claude-3.5-sonnet:beta',
+  fallback: 'anthropic/claude-3.5-sonnet',
+  backup: 'anthropic/claude-3-haiku',
+};
+
 // Validate API key on module load
 if (!OPENROUTER_API_KEY) {
   console.error('❌ OPENROUTER_API_KEY is not set! Please add it to your .env file.');
@@ -651,32 +658,87 @@ Current date: ${new Date().toLocaleDateString()}`,
       content: 'Processing your request...',
     });
 
-    // Initial API call with retry logic
-    const requestBody = {
-      model: 'anthropic/claude-3.5-sonnet',
-      messages,
-      tools: AGENT_TOOLS,
-      tool_choice: 'auto',
-    };
+    // Try models in order: primary -> fallback -> backup
+    const modelsTried: string[] = [];
+    let response: Response | null = null;
+    let lastError: Error | null = null;
 
-    console.log('📤 [AGENT] Request body:', {
-      model: requestBody.model,
-      messageCount: requestBody.messages.length,
-      toolCount: requestBody.tools.length,
-    });
+    for (const [modelType, modelName] of Object.entries(MODELS)) {
+      try {
+        console.log(`🎯 [AGENT] Trying model: ${modelName} (${modelType})`);
+        modelsTried.push(modelName);
 
-    let response = await fetchWithRetry(OPENROUTER_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Hospital Management System',
-      },
-      body: JSON.stringify(requestBody),
-    });
+        const requestBody = {
+          model: modelName,
+          messages,
+          tools: AGENT_TOOLS,
+          tool_choice: 'auto',
+        };
 
-    console.log('📥 [AGENT] Response status:', response.status, response.statusText);
+        console.log('📤 [AGENT] Request body:', {
+          model: requestBody.model,
+          messageCount: requestBody.messages.length,
+          toolCount: requestBody.tools.length,
+        });
+
+        response = await fetchWithRetry(
+          OPENROUTER_API_URL,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+              'HTTP-Referer': window.location.origin,
+              'X-Title': 'Hospital Management System',
+            },
+            body: JSON.stringify(requestBody),
+          },
+          2, // Reduced retries per model
+          1000
+        );
+
+        console.log('📥 [AGENT] Response status:', response.status, response.statusText);
+
+        // If successful, break out of loop
+        if (response.ok) {
+          console.log(`✅ [AGENT] Success with model: ${modelName}`);
+          break;
+        }
+
+        // If 4xx error, don't try other models
+        if (response.status >= 400 && response.status < 500) {
+          console.warn(`⚠️ [AGENT] Client error ${response.status}, not trying other models`);
+          break;
+        }
+
+        // If 5xx and not the last model, try next model
+        if (response.status >= 500 && modelType !== 'backup') {
+          const errorText = await response.clone().text();
+          console.warn(`❌ [AGENT] Model ${modelName} failed with 500, trying next model...`);
+          lastError = new Error(`All models failed. Last error: ${errorText}`);
+          continue;
+        }
+
+        // Last model failed, break
+        break;
+      } catch (error) {
+        console.error(`❌ [AGENT] Error with model ${modelName}:`, error);
+        lastError = error as Error;
+
+        // If not the last model, try next
+        if (modelType !== 'backup') {
+          console.log('🔄 [AGENT] Trying next model...');
+          continue;
+        }
+
+        // Last model failed
+        throw error;
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error('Failed to get response from any model');
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
