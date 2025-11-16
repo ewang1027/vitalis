@@ -313,81 +313,21 @@ export interface StreamUpdate {
   data?: any;
 }
 
-// Tool definitions - SIMPLIFIED to reduce payload size
+// Tool definitions - ULTRA-MINIMAL to reduce payload size and prevent 500 errors
 const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'get_room_context',
-      description: 'Get room info (patient, equipment, vitals)',
-      parameters: {
-        type: 'object',
-        properties: {
-          room_identifier: {
-            type: 'string',
-            description: 'Room ID or number',
-          },
-        },
-        required: ['room_identifier'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_patient_context',
-      description: 'Get patient info',
-      parameters: {
-        type: 'object',
-        properties: {
-          patient_identifier: {
-            type: 'string',
-            description: 'Patient ID or name',
-          },
-        },
-        required: ['patient_identifier'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_hospital_context',
-      description: 'Get hospital overview',
-      parameters: {
-        type: 'object',
-        properties: {},
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'check_in_patient',
-      description: 'Admit new patient. Extract info from conversation history.',
+      description: 'Admit patient to room',
       parameters: {
         type: 'object',
         properties: {
-          name: {
-            type: 'string',
-            description: 'Full name',
-          },
-          age: {
-            type: 'number',
-            description: 'Age',
-          },
-          gender: {
-            type: 'string',
-            description: 'Gender',
-          },
-          condition: {
-            type: 'string',
-            description: 'Medical condition',
-          },
-          severity: {
-            type: 'string',
-            enum: ['stable', 'moderate', 'critical', 'recovering'],
-          },
+          name: { type: 'string' },
+          age: { type: 'number' },
+          gender: { type: 'string' },
+          condition: { type: 'string' },
+          severity: { type: 'string', enum: ['stable', 'moderate', 'critical', 'recovering'] },
         },
         required: ['name', 'age', 'gender', 'condition'],
       },
@@ -396,17 +336,12 @@ const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'discharge_patient',
-      description: 'Discharge patient',
+      name: 'get_room_context',
+      description: 'Get room details',
       parameters: {
         type: 'object',
-        properties: {
-          patientId: {
-            type: 'string',
-            description: 'Patient ID',
-          },
-        },
-        required: ['patientId'],
+        properties: { room_identifier: { type: 'string' } },
+        required: ['room_identifier'],
       },
     },
   },
@@ -414,44 +349,18 @@ const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'create_task',
-      description: 'Create task (food, cleaning, transfer, etc)',
+      description: 'Create task',
       parameters: {
         type: 'object',
         properties: {
           taskType: {
             type: 'string',
-            enum: [
-              'food_delivery',
-              'patient_transfer',
-              'patient_onboarding',
-              'patient_discharge',
-              'cleaning_request',
-              'equipment_transfer',
-              'linen_restocking',
-              'medication_delivery',
-              'maintenance_request',
-            ],
+            enum: ['food_delivery', 'cleaning_request', 'equipment_transfer'],
           },
-          targetRoomId: {
-            type: 'string',
-          },
-          priority: {
-            type: 'string',
-            enum: ['low', 'medium', 'high', 'urgent'],
-          },
+          targetRoomId: { type: 'string' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high'] },
         },
         required: ['taskType', 'targetRoomId'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'find_available_room',
-      description: 'Find available room',
-      parameters: {
-        type: 'object',
-        properties: {},
       },
     },
   },
@@ -526,8 +435,8 @@ export async function runAgent(
   console.log('🧹 [SANITIZE] Validating and sanitizing messages');
   
   // CRITICAL: Limit conversation history to prevent payload bloat
-  // Keep only the last 10 messages to avoid 500 errors
-  const MAX_HISTORY = 10;
+  // Keep only the last 5 messages to avoid 500 errors from OpenRouter
+  const MAX_HISTORY = 5;
   let sanitizedHistory = conversationHistory.map(sanitizeMessage);
   
   if (sanitizedHistory.length > MAX_HISTORY) {
@@ -536,55 +445,27 @@ export async function runAgent(
     sanitizedHistory = sanitizedHistory.slice(-MAX_HISTORY);
   }
   
-  // System prompt for hospital AI assistant
+  // System prompt for hospital AI assistant - MINIMAL to reduce payload size
   const messages: AgentMessage[] = [
     {
       role: 'system',
-      content: `You are Vitalis, a friendly and efficient AI assistant for hospital operations at HackNYU Hospital. Your goal is to help staff quickly and professionally.
+      content: `Vitalis AI for hospital ops. Check conversation history before asking questions.
 
-🎯 YOUR WORKFLOW:
-1. LISTEN: Understand what the user needs
-2. GATHER: If you need info, ask ONE clear question
-3. ACT: Call the appropriate tool immediately when you have enough info
-4. CONFIRM: After tool execution, tell user what happened in a friendly way
+TOOLS:
+- check_in_patient(name, age, gender, condition, severity) - Automatically finds room
+- discharge_patient(patientId)
+- create_task(taskType, targetRoomId, priority)
+- get_room_context(room_identifier)
+- get_patient_context(patient_identifier)
+- find_available_room()
 
-📋 WHAT YOU CAN DO:
-- Check in patients (assign them to rooms automatically)
-- Discharge patients
-- Create tasks (food delivery, cleaning, equipment moves, etc.)
-- Get room/patient information
-- Find available rooms
+RULES:
+1. If user provides patient info (name, age, gender), CALL check_in_patient immediately
+2. Default: severity="stable", capitalize gender (Male/Female/Other)
+3. After tool execution, briefly explain what happened
+4. Extract info from conversation - if you asked for patient details and user replied, USE TOOL NOW
 
-💡 CONVERSATION FLOW EXAMPLES:
-
-Example 1 - Patient Check-in:
-User: "Check in a new patient"
-You: "I'd be happy to help! What's the patient's name, age, and condition?"
-User: "Joe John, 44, male, stable"
-You: [CALL check_in_patient tool]
-You: "✅ I've checked in Joe John (44, Male) to Room 102. He's all set with initial vitals recorded."
-
-Example 2 - Direct Check-in:
-User: "Check in Joe John, 44, male, not feeling well"
-You: [CALL check_in_patient tool immediately - you have enough info!]
-You: "✅ I've admitted Joe John (44, Male) to Room 102. His condition is noted as stable and initial vitals are being monitored."
-
-Example 3 - Task Creation:
-User: "Send food to room 102"
-You: [CALL create_task tool immediately]
-You: "✅ Food delivery task created for Room 102. The staff will be notified."
-
-🔑 CRITICAL RULES:
-1. Check conversation history - if you already asked for info and user responded, USE TOOLS NOW
-2. When calling check_in_patient, the tool will automatically find an available room - you don't need to specify one
-3. After ANY tool executes, explain what happened in a clear, professional but friendly way
-4. Default missing info: severity="stable", gender to capitalized (Male/Female/Other)
-5. Be concise - staff are busy. 1-2 sentences maximum after actions.
-6. NEVER say "Done." alone - always explain what was done
-
-Available tools: check_in_patient, discharge_patient, create_task, get_room_context, get_patient_context, get_hospital_context, find_available_room
-
-Today: ${new Date().toLocaleDateString()}`,
+Example: User says "Bob Bob, 22, male, critical" -> Call check_in_patient({name:"Bob Bob", age:22, gender:"Male", condition:"critical illness", severity:"critical"})`,
     },
     ...sanitizedHistory,
     sanitizeMessage({
@@ -639,7 +520,7 @@ Today: ${new Date().toLocaleDateString()}`,
         const requestBody: any = {
           model: modelName,
           messages,
-          max_tokens: 500, // Keep moderate to prevent payload issues
+          max_tokens: 300, // Reduced to prevent 500 errors
           temperature: 0.7,
           tools: AGENT_TOOLS,
           tool_choice: 'auto',
@@ -943,7 +824,7 @@ Today: ${new Date().toLocaleDateString()}`,
           messages,
           tools: AGENT_TOOLS,
           tool_choice: 'auto',
-          max_tokens: 500,
+          max_tokens: 300,
         }),
       });
 
