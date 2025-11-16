@@ -4,6 +4,9 @@ import { OrbitControls, Text } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Database } from '@/lib/supabase';
 import type { Asset } from '@/types/wardops';
+import { useTaskSubscription } from '@/hooks/useTaskSubscription';
+import { TaskPaths } from './TaskPathAnimation';
+import { RoomTaskIndicators } from './RoomTaskIndicator';
 
 type Room = Database['public']['Tables']['rooms']['Row'];
 
@@ -553,6 +556,15 @@ export function Hospital3DMap({
   const [showPopup, setShowPopup] = useState(false);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
 
+  // Subscribe to active tasks for visualization
+  const { activeTasks } = useTaskSubscription();
+
+  // Helper function to get room 3D position
+  const getRoomPosition = (roomId: string): [number, number, number] | undefined => {
+    const layout = roomLayouts.get(roomId);
+    return layout?.position;
+  };
+
   const getRoomStatus = (roomId: string): 'ready' | 'needs-attention' | 'occupied' => {
     const room = rooms.find(r => r.id === roomId);
     if (!room) return 'ready';
@@ -626,6 +638,12 @@ export function Hospital3DMap({
               labelRotation={layout.labelRotation}
             />
           ))}
+
+          {/* Task Path Animations */}
+          <TaskPaths tasks={activeTasks} getRoomPosition={getRoomPosition} />
+
+          {/* Room-Based Task Indicators */}
+          <RoomTaskIndicators tasks={activeTasks} getRoomPosition={getRoomPosition} />
         </Canvas>
       </Suspense>
 

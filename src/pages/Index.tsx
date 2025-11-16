@@ -40,9 +40,16 @@ const Index = ({ onLogout }: IndexProps) => {
   const { tasks, setTasks } = useTasks();
   const { notifications, setNotifications } = useNotifications(supabaseUser?.id);
   const { messages: chatHistory } = useChatMessages(selectedRoomId || undefined);
-  const { rooms } = useRooms();
+  const { rooms, refetch: refetchRooms } = useRooms();
   const { roomDetails } = useRoomDetails(roomDetailViewId || '');
-  const { patients } = usePatients();
+  const { patients, refetch: refetchPatients } = usePatients();
+  
+  // Callback to refresh data after patient operations
+  const handleDataUpdate = () => {
+    console.log('🔄 [INDEX] Data update triggered - refreshing rooms and patients...');
+    refetchRooms();
+    refetchPatients();
+  };
 
   // Transform Supabase user to match User type
   const user = supabaseUser ? {
@@ -284,6 +291,7 @@ const Index = ({ onLogout }: IndexProps) => {
                         tasks,
                         patients
                       }}
+                      onDataUpdate={handleDataUpdate}
                     />
                   ) : (
                     <div className="p-6 flex-1">

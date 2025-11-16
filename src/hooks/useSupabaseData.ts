@@ -80,6 +80,7 @@ export function usePatients(activeOnly = true) {
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function fetchPatients() {
@@ -93,6 +94,7 @@ export function usePatients(activeOnly = true) {
         const { data, error } = await query.order('admission_date', { ascending: false })
 
         if (error) throw error
+        console.log('🔄 Patients fetched:', data?.length || 0, 'patients')
         setPatients(data || [])
       } catch (err) {
         setError(err as Error)
@@ -102,9 +104,14 @@ export function usePatients(activeOnly = true) {
     }
 
     fetchPatients()
-  }, [activeOnly])
+  }, [activeOnly, refreshKey])
 
-  return { patients, loading, error }
+  const refetch = () => {
+    console.log('🔄 Refetching patients data...')
+    setRefreshKey(prev => prev + 1)
+  }
+
+  return { patients, loading, error, refetch }
 }
 
 // Hook for fetching rooms
@@ -112,30 +119,45 @@ export function useRooms() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function fetchRooms() {
       try {
+        console.log('🔄 [ROOMS] Fetching rooms data... (refreshKey:', refreshKey, ')');
         const { data, error } = await supabase
           .from('rooms')
           .select('*')
           .order('room_number', { ascending: true })
 
         if (error) throw error
-        console.log('Rooms fetched:', data?.length || 0, 'rooms')
+        console.log('✅ [ROOMS] Rooms fetched:', data?.length || 0, 'rooms');
+        
+        // Log room statuses for debugging
+        const statusCounts = data?.reduce((acc, room) => {
+          acc[room.status] = (acc[room.status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log('📊 [ROOMS] Status breakdown:', statusCounts);
+        
         setRooms(data || [])
       } catch (err) {
         setError(err as Error)
-        console.error('Error fetching rooms:', err)
+        console.error('❌ [ROOMS] Error fetching rooms:', err)
       } finally {
         setLoading(false)
       }
     }
 
     fetchRooms()
-  }, [])
+  }, [refreshKey])
 
-  return { rooms, loading, error }
+  const refetch = () => {
+    console.log('🔄 Refetching rooms data...')
+    setRefreshKey(prev => prev + 1)
+  }
+
+  return { rooms, loading, error, refetch }
 }
 
 // Hook for fetching equipment/assets
