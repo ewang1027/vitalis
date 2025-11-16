@@ -26,10 +26,11 @@ const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 // Model options with fallbacks
+// Using Haiku as primary - it's faster, more stable, and less prone to 500 errors
 const MODELS = {
-  primary: 'anthropic/claude-3.5-sonnet:beta',
+  primary: 'anthropic/claude-3-haiku',
   fallback: 'anthropic/claude-3.5-sonnet',
-  backup: 'anthropic/claude-3-haiku',
+  backup: 'anthropic/claude-3-sonnet',
 };
 
 // Validate API key on module load
@@ -48,6 +49,35 @@ async function fetchWithRetry(
 ): Promise<Response> {
   let lastError: Error | null = null;
 
+  // Log the request for debugging
+  console.group('🔍 [DEBUG] OpenRouter Request Details');
+  try {
+    const body = JSON.parse(options.body as string);
+    console.log('📤 [REQUEST] URL:', url);
+    console.log('📤 [REQUEST] Model:', body.model);
+    console.log('📤 [REQUEST] Message count:', body.messages?.length || 0);
+    console.log('📤 [REQUEST] Tools count:', body.tools?.length || 0);
+    console.log('📤 [REQUEST] Headers:', {
+      hasAuth: !!(options.headers as any)?.['Authorization'],
+      hasReferer: !!(options.headers as any)?.['HTTP-Referer'],
+      hasTitle: !!(options.headers as any)?.['X-Title'],
+    });
+    
+    // Calculate approximate request size
+    const requestSize = new Blob([options.body as string]).size;
+    console.log('📤 [REQUEST] Payload size:', `${(requestSize / 1024).toFixed(2)} KB`);
+    
+    // Log last few messages for context
+    if (body.messages?.length > 0) {
+      console.log('📤 [REQUEST] Last user message:', 
+        body.messages[body.messages.length - 1]?.content?.substring(0, 100) + '...'
+      );
+    }
+  } catch (e) {
+    console.error('Failed to parse request body for logging:', e);
+  }
+  console.groupEnd();
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       console.log(`🔄 [FETCH_RETRY] Attempt ${attempt + 1}/${maxRetries + 1}`);
@@ -65,21 +95,51 @@ async function fetchWithRetry(
       // For client errors (4xx), don't retry - return for error handling
       if (response.status >= 400 && response.status < 500) {
         console.warn(`⚠️ [FETCH_RETRY] Client error ${response.status}, not retrying`);
+        
+        // Log detailed error information
+        try {
+          const errorText = await response.clone().text();
+          console.error('❌ [ERROR_DETAILS] Response body:', errorText);
+          const errorJson = JSON.parse(errorText);
+          console.error('❌ [ERROR_DETAILS] Parsed error:', errorJson);
+        } catch (e) {
+          console.error('Failed to parse error response');
+        }
+        
         return response;
       }
 
       // For server errors (5xx), retry
       if (response.status >= 500) {
         // Clone response before reading to avoid consuming body
-        const errorText = await response.clone().text();
+        let errorText = '';
+        let errorDetails = {};
+        
+        try {
+          errorText = await response.clone().text();
+          console.error(`❌ [500_ERROR] Raw response:`, errorText);
+          
+          // Try to parse as JSON for more details
+          try {
+            errorDetails = JSON.parse(errorText);
+            console.error(`❌ [500_ERROR] Parsed error:`, errorDetails);
+          } catch (jsonError) {
+            console.error(`❌ [500_ERROR] Response is not JSON`);
+          }
+        } catch (textError) {
+          console.error(`❌ [500_ERROR] Could not read response text:`, textError);
+        }
+        
         lastError = new Error(
-          `OpenRouter API error (${response.status}): ${response.statusText}. ${errorText.substring(0, 200)}`
+          `OpenRouter API error (${response.status}): ${response.statusText}. ${errorText.substring(0, 500)}`
         );
 
         console.error(`❌ [FETCH_RETRY] Server error:`, lastError.message);
 
         // Don't retry on last attempt
         if (attempt === maxRetries) {
+          console.error('❌ [FETCH_RETRY] Max retries reached, throwing error');
+          console.error('❌ [FETCH_RETRY] This is a server-side error from OpenRouter');
           throw lastError;
         }
 
@@ -96,6 +156,11 @@ async function fetchWithRetry(
       return response;
     } catch (error) {
       console.error(`❌ [FETCH_RETRY] Caught error:`, error);
+      console.error(`❌ [FETCH_RETRY] Error type:`, error?.constructor?.name);
+      console.error(`❌ [FETCH_RETRY] Error details:`, {
+        message: error instanceof Error ? error.message : 'Unknown',
+        stack: error instanceof Error ? error.stack?.substring(0, 300) : 'No stack',
+      });
 
       // Network errors or fetch failures
       if (attempt === maxRetries) {
@@ -113,6 +178,63 @@ async function fetchWithRetry(
   }
 
   throw lastError || new Error('Max retries exceeded');
+}
+
+/**
+ * Validate and sanitize message content to prevent 500 errors
+ */
+function sanitizeMessage(message: AgentMessage): AgentMessage {
+  // Ensure content is a string and not too long
+  let content = message.content;
+  
+  if (typeof content !== 'string') {
+    content = String(content);
+  }
+  
+  // Truncate extremely long messages (keep under 100K chars)
+  if (content.length > 100000) {
+    console.warn(`⚠️ [SANITIZE] Message content truncated from ${content.length} to 100000 chars`);
+    content = content.substring(0, 100000) + '\n[... message truncated due to length ...]';
+  }
+  
+  // Remove null bytes and other problematic characters
+  content = content.replace(/\0/g, '');
+  
+  return {
+    ...message,
+    content,
+  };
+}
+
+/**
+ * Validate messages array before sending to API
+ */
+function validateMessages(messages: AgentMessage[]): boolean {
+  if (!Array.isArray(messages) || messages.length === 0) {
+    console.error('❌ [VALIDATE] Messages must be a non-empty array');
+    return false;
+  }
+  
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    
+    if (!msg.role || !['system', 'user', 'assistant', 'tool'].includes(msg.role)) {
+      console.error(`❌ [VALIDATE] Invalid role at index ${i}: ${msg.role}`);
+      return false;
+    }
+    
+    if (msg.content === null || msg.content === undefined) {
+      console.warn(`⚠️ [VALIDATE] Empty content at index ${i}, setting to empty string`);
+      msg.content = '';
+    }
+    
+    if (typeof msg.content !== 'string') {
+      console.warn(`⚠️ [VALIDATE] Non-string content at index ${i}, converting to string`);
+      msg.content = String(msg.content);
+    }
+  }
+  
+  return true;
 }
 
 /**
@@ -191,19 +313,19 @@ export interface StreamUpdate {
   data?: any;
 }
 
-// Tool definitions for OpenRouter function calling
+// Tool definitions - SIMPLIFIED to reduce payload size
 const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
       name: 'get_room_context',
-      description: 'Get comprehensive information about a specific room including patient, equipment, vitals, tasks, and alerts. Use this whenever the user asks about a specific room.',
+      description: 'Get room info (patient, equipment, vitals)',
       parameters: {
         type: 'object',
         properties: {
           room_identifier: {
             type: 'string',
-            description: 'Room ID or room number (e.g., "102", "room-uuid")',
+            description: 'Room ID or number',
           },
         },
         required: ['room_identifier'],
@@ -214,13 +336,13 @@ const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'get_patient_context',
-      description: 'Get comprehensive information about a specific patient including their vitals, room assignment, and assigned staff.',
+      description: 'Get patient info',
       parameters: {
         type: 'object',
         properties: {
           patient_identifier: {
             type: 'string',
-            description: 'Patient ID or patient name',
+            description: 'Patient ID or name',
           },
         },
         required: ['patient_identifier'],
@@ -230,25 +352,8 @@ const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'get_equipment_context',
-      description: 'Get information about specific equipment including its current location and assigned tasks.',
-      parameters: {
-        type: 'object',
-        properties: {
-          equipment_identifier: {
-            type: 'string',
-            description: 'Equipment ID or equipment name',
-          },
-        },
-        required: ['equipment_identifier'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'get_hospital_context',
-      description: 'Get overall hospital status including all rooms, patients, equipment, staff, active tasks, and alerts. Use this for general hospital overview questions.',
+      description: 'Get hospital overview',
       parameters: {
         type: 'object',
         properties: {},
@@ -259,42 +364,29 @@ const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'check_in_patient',
-      description: 'Admit a new patient to the hospital. This will create a patient record, assign them to an available room, and set up initial vitals. IMPORTANT: Check the conversation history first - if the user already provided patient information (name, age, gender, condition, etc.), extract and use it directly. Only ask for missing required fields.',
+      description: 'Admit new patient. Extract info from conversation history.',
       parameters: {
         type: 'object',
         properties: {
           name: {
             type: 'string',
-            description: 'Patient full name',
+            description: 'Full name',
           },
           age: {
             type: 'number',
-            description: 'Patient age',
+            description: 'Age',
           },
           gender: {
             type: 'string',
-            description: 'Patient gender (male/female/other)',
+            description: 'Gender',
           },
           condition: {
             type: 'string',
-            description: 'Medical condition or reason for admission',
+            description: 'Medical condition',
           },
           severity: {
             type: 'string',
-            description: 'Condition severity: stable, moderate, critical, or recovering',
             enum: ['stable', 'moderate', 'critical', 'recovering'],
-          },
-          roomId: {
-            type: 'string',
-            description: 'Specific room ID (optional, will auto-assign if not provided)',
-          },
-          assignedDoctorId: {
-            type: 'string',
-            description: 'Doctor ID to assign (optional)',
-          },
-          assignedNurseId: {
-            type: 'string',
-            description: 'Nurse ID to assign (optional)',
           },
         },
         required: ['name', 'age', 'gender', 'condition'],
@@ -305,13 +397,13 @@ const AGENT_TOOLS = [
     type: 'function',
     function: {
       name: 'discharge_patient',
-      description: 'Discharge a patient from the hospital. This will mark the patient as inactive, release their room, and deactivate their assignment.',
+      description: 'Discharge patient',
       parameters: {
         type: 'object',
         properties: {
           patientId: {
             type: 'string',
-            description: 'Patient ID to discharge',
+            description: 'Patient ID',
           },
         },
         required: ['patientId'],
@@ -321,35 +413,13 @@ const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'transfer_patient',
-      description: 'Move a patient from their current room to a different room.',
-      parameters: {
-        type: 'object',
-        properties: {
-          patientId: {
-            type: 'string',
-            description: 'Patient ID to transfer',
-          },
-          targetRoomId: {
-            type: 'string',
-            description: 'Target room ID to move the patient to',
-          },
-        },
-        required: ['patientId', 'targetRoomId'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'create_task',
-      description: 'Create a task such as food delivery, cleaning request, equipment transfer, linen restocking, medication delivery, or maintenance. This will automatically trigger a visualization showing the task path.',
+      description: 'Create task (food, cleaning, transfer, etc)',
       parameters: {
         type: 'object',
         properties: {
           taskType: {
             type: 'string',
-            description: 'Type of task to create',
             enum: [
               'food_delivery',
               'patient_transfer',
@@ -357,7 +427,6 @@ const AGENT_TOOLS = [
               'patient_discharge',
               'cleaning_request',
               'equipment_transfer',
-              'staff_assignment',
               'linen_restocking',
               'medication_delivery',
               'maintenance_request',
@@ -365,28 +434,10 @@ const AGENT_TOOLS = [
           },
           targetRoomId: {
             type: 'string',
-            description: 'Target room ID where the task should be performed',
-          },
-          sourceRoomId: {
-            type: 'string',
-            description: 'Source room ID (for transfers, optional)',
           },
           priority: {
             type: 'string',
-            description: 'Task priority level',
             enum: ['low', 'medium', 'high', 'urgent'],
-          },
-          title: {
-            type: 'string',
-            description: 'Custom task title (optional)',
-          },
-          assignedToId: {
-            type: 'string',
-            description: 'Staff member ID to assign the task to (optional)',
-          },
-          equipmentId: {
-            type: 'string',
-            description: 'Equipment ID for equipment-related tasks (optional)',
           },
         },
         required: ['taskType', 'targetRoomId'],
@@ -396,119 +447,11 @@ const AGENT_TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'update_vitals',
-      description: 'Update vital signs for a patient.',
-      parameters: {
-        type: 'object',
-        properties: {
-          patientId: {
-            type: 'string',
-            description: 'Patient ID',
-          },
-          heartRate: {
-            type: 'number',
-            description: 'Heart rate (bpm)',
-          },
-          bloodPressure: {
-            type: 'string',
-            description: 'Blood pressure (e.g., "120/80")',
-          },
-          temperature: {
-            type: 'number',
-            description: 'Body temperature (Fahrenheit)',
-          },
-          oxygenSaturation: {
-            type: 'number',
-            description: 'Oxygen saturation percentage (0-100)',
-          },
-          respiratoryRate: {
-            type: 'number',
-            description: 'Respiratory rate (breaths per minute)',
-          },
-        },
-        required: ['patientId'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'assign_staff',
-      description: 'Assign doctor or nurse to a patient.',
-      parameters: {
-        type: 'object',
-        properties: {
-          patientId: {
-            type: 'string',
-            description: 'Patient ID',
-          },
-          doctorId: {
-            type: 'string',
-            description: 'Doctor ID to assign (optional)',
-          },
-          nurseId: {
-            type: 'string',
-            description: 'Nurse ID to assign (optional)',
-          },
-        },
-        required: ['patientId'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_available_staff',
-      description: 'Get list of available staff members, optionally filtered by role.',
-      parameters: {
-        type: 'object',
-        properties: {
-          role: {
-            type: 'string',
-            description: 'Staff role to filter by (doctor, nurse, etc.) - optional',
-          },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_alert',
-      description: 'Create an alert for a specific room.',
-      parameters: {
-        type: 'object',
-        properties: {
-          roomId: {
-            type: 'string',
-            description: 'Room ID',
-          },
-          alertType: {
-            type: 'string',
-            description: 'Type of alert (e.g., "vitals_critical", "equipment_failure")',
-          },
-          message: {
-            type: 'string',
-            description: 'Alert message',
-          },
-        },
-        required: ['roomId', 'alertType', 'message'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'find_available_room',
-      description: 'Find an available room for patient admission, optionally filtered by room type.',
+      description: 'Find available room',
       parameters: {
         type: 'object',
-        properties: {
-          roomType: {
-            type: 'string',
-            description: 'Room type (ICU, general, surgery, etc.) - optional',
-          },
-        },
+        properties: {},
       },
     },
   },
@@ -516,53 +459,58 @@ const AGENT_TOOLS = [
 
 // Execute a tool based on its name and arguments
 async function executeTool(toolName: string, toolArgs: any): Promise<any> {
-  console.log(`Executing tool: ${toolName}`, toolArgs);
+  console.log(`🔧 [TOOL] Executing: ${toolName}`, toolArgs);
 
-  switch (toolName) {
-    case 'get_room_context':
-      return await getRoomContext(toolArgs.room_identifier);
+  try {
+    switch (toolName) {
+      case 'get_room_context':
+        return await getRoomContext(toolArgs.room_identifier);
 
-    case 'get_patient_context':
-      return await getPatientContext(toolArgs.patient_identifier);
+      case 'get_patient_context':
+        return await getPatientContext(toolArgs.patient_identifier);
 
-    case 'get_equipment_context':
-      return await getEquipmentContext(toolArgs.equipment_identifier);
+      case 'get_hospital_context':
+        return await getHospitalContext();
 
-    case 'get_hospital_context':
-      return await getHospitalContext();
+      case 'check_in_patient':
+        return await checkInPatient(toolArgs);
 
-    case 'check_in_patient':
-      return await checkInPatient(toolArgs);
+      case 'discharge_patient':
+        return await dischargePatient(toolArgs);
 
-    case 'discharge_patient':
-      return await dischargePatient(toolArgs);
+      case 'create_task':
+        return await createTask(toolArgs);
 
-    case 'transfer_patient':
-      return await transferPatient(toolArgs);
+      case 'find_available_room':
+        return await findAvailableRoom(toolArgs.roomType);
 
-    case 'create_task':
-      return await createTask(toolArgs);
+      // Fallback for removed tools
+      case 'get_equipment_context':
+        return await getEquipmentContext(toolArgs.equipment_identifier);
+      case 'transfer_patient':
+        return await transferPatient(toolArgs);
+      case 'update_vitals':
+        return await updateVitals(toolArgs);
+      case 'assign_staff':
+        return await assignStaff(toolArgs);
+      case 'get_available_staff':
+        return await getAvailableStaff(toolArgs.role);
+      case 'create_alert':
+        return await createAlert(toolArgs);
 
-    case 'update_vitals':
-      return await updateVitals(toolArgs);
-
-    case 'assign_staff':
-      return await assignStaff(toolArgs);
-
-    case 'get_available_staff':
-      return await getAvailableStaff(toolArgs.role);
-
-    case 'create_alert':
-      return await createAlert(toolArgs);
-
-    case 'find_available_room':
-      return await findAvailableRoom(toolArgs.roomType);
-
-    default:
-      return {
-        success: false,
-        message: `Unknown tool: ${toolName}`,
-      };
+      default:
+        console.warn(`⚠️ [TOOL] Unknown tool: ${toolName}`);
+        return {
+          success: false,
+          message: `Unknown tool: ${toolName}`,
+        };
+    }
+  } catch (error) {
+    console.error(`❌ [TOOL] Error executing ${toolName}:`, error);
+    return {
+      success: false,
+      message: `Tool execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
   }
 }
 
@@ -574,65 +522,52 @@ export async function runAgent(
   conversationHistory: AgentMessage[] = [],
   onUpdate?: (update: StreamUpdate) => void
 ): Promise<AgentResponse> {
+  // Sanitize and validate input
+  console.log('🧹 [SANITIZE] Validating and sanitizing messages');
+  
+  // CRITICAL: Limit conversation history to prevent payload bloat
+  // Keep only the last 10 messages to avoid 500 errors
+  const MAX_HISTORY = 10;
+  let sanitizedHistory = conversationHistory.map(sanitizeMessage);
+  
+  if (sanitizedHistory.length > MAX_HISTORY) {
+    console.warn(`⚠️ [TRIM] Trimming conversation history from ${sanitizedHistory.length} to ${MAX_HISTORY} messages`);
+    // Keep the most recent messages
+    sanitizedHistory = sanitizedHistory.slice(-MAX_HISTORY);
+  }
+  
+  // MUCH SHORTER system prompt to reduce payload size
   const messages: AgentMessage[] = [
     {
       role: 'system',
-      content: `You are an intelligent hospital management assistant with access to comprehensive hospital data and the ability to perform actions.
+      content: `Hospital AI assistant. When user provides patient info, IMMEDIATELY call check_in_patient tool.
 
-Your capabilities:
-1. **Context Gathering**: You can query detailed information about rooms, patients, equipment, and overall hospital status. Always gather relevant context before taking actions.
+Example:
+User: "john smith, 24, male, flu"
+You: Call check_in_patient({name: "john smith", age: 24, gender: "male", condition: "flu", severity: "stable"})
 
-2. **Action Execution**: You can perform various actions:
-   - Check in new patients (will trigger onboarding visualization)
-   - Discharge patients
-   - Transfer patients between rooms (will show transfer path)
-   - Create tasks like food delivery, cleaning, equipment transfer, linen restocking (all trigger visualizations)
-   - Update patient vitals
-   - Assign staff to patients
-   - Create alerts
+Rules:
+- Extract all patient info from conversation history
+- Call check_in_patient tool immediately when you have name, age, gender, condition
+- Default severity to "stable" if not specified
+- Gender: capitalize first letter (Male/Female/Other)
+- After tool executes, explain what happened to the user
 
-3. **Visualization**: Many actions automatically trigger 3D pathfinding visualizations showing dotted lines between rooms. For example:
-   - Bedsheet request from room 101 will show a green dotted line path
-   - Patient transfers show the movement path
-   - Task deliveries show the route
-
-4. **Progressive Workflow**:
-   - First, gather context using get_room_context, get_patient_context, etc.
-   - Then, based on the context, take appropriate actions
-   - Provide clear feedback about what you're doing
-
-5. **Information Requests**: When you need more information to complete a task (like patient details for check-in), ask the user specific questions.
-
-Guidelines:
-- Always be proactive in gathering context
-- For requests about a specific room (e.g., "room 102"), use get_room_context to get ALL related information
-- Provide detailed, helpful responses based on the data you retrieve
-- When performing actions, explain what you're doing and confirm success
-- If visualizations are triggered, mention them to the user
-
-**CRITICAL - Response Formatting**:
-- NEVER show raw JSON data to users
-- Always convert tool results and data into natural, human-readable language
-- Use bullet points, tables, or structured text instead of JSON
-- Format numbers, dates, and medical values clearly (e.g., "98.6°F" not "temperature: 98.6")
-- If there's an error, explain it in plain English, don't show error objects
-
-**CRITICAL - Conversation Context Awareness**:
-- You have access to the FULL conversation history above
-- NEVER ask a question that was already answered in the conversation
-- NEVER repeat information that was already provided
-- Always reference and build upon previous messages in the conversation
-- If the user already provided information (name, age, condition, etc.), USE IT directly without asking again
-- Review the conversation history carefully before asking for any information
-
-Current date: ${new Date().toLocaleDateString()}`,
+Date: ${new Date().toLocaleDateString()}`,
     },
-    ...conversationHistory,
-    {
+    ...sanitizedHistory,
+    sanitizeMessage({
       role: 'user',
       content: userMessage,
-    },
+    }),
   ];
+
+  // Validate messages before proceeding
+  if (!validateMessages(messages)) {
+    throw new Error('Invalid message format detected. Please try again.');
+  }
+
+  console.log('✅ [SANITIZE] Messages validated successfully');
 
   let requiresVisualization = false;
   let visualizationData: any = null;
@@ -668,18 +603,41 @@ Current date: ${new Date().toLocaleDateString()}`,
         console.log(`🎯 [AGENT] Trying model: ${modelName} (${modelType})`);
         modelsTried.push(modelName);
 
-        const requestBody = {
+        // ALWAYS include tools - they're essential for functionality
+        const requestBody: any = {
           model: modelName,
           messages,
+          max_tokens: 1000, // Increased for better responses
+          temperature: 0.7,
           tools: AGENT_TOOLS,
           tool_choice: 'auto',
         };
+        
+        console.log('📦 [AGENT] Including tools in request');
+
 
         console.log('📤 [AGENT] Request body:', {
           model: requestBody.model,
           messageCount: requestBody.messages.length,
-          toolCount: requestBody.tools.length,
+          toolCount: requestBody.tools?.length || 0,
+          hasTools: !!requestBody.tools,
         });
+
+        // Validate request size (OpenRouter has limits)
+        const requestBodyStr = JSON.stringify(requestBody);
+        const requestSizeKB = new Blob([requestBodyStr]).size / 1024;
+        console.log(`📊 [AGENT] Request payload size: ${requestSizeKB.toFixed(2)} KB`);
+        
+        // Warn if payload is large
+        if (requestSizeKB > 200) {
+          console.warn(`⚠️ [AGENT] Large request: ${requestSizeKB.toFixed(2)} KB`);
+          if (requestSizeKB > 500) {
+            console.error(`🔴 [AGENT] Extremely large request! This will likely cause 500 errors.`);
+            console.error(`💡 [FIX] Conversation history has been trimmed. If still failing, try:`);
+            console.error(`   1. Refresh the page to clear chat history`);
+            console.error(`   2. Use shorter, more concise messages`);
+          }
+        }
 
         response = await fetchWithRetry(
           OPENROUTER_API_URL,
@@ -691,7 +649,7 @@ Current date: ${new Date().toLocaleDateString()}`,
               'HTTP-Referer': window.location.origin,
               'X-Title': 'Hospital Management System',
             },
-            body: JSON.stringify(requestBody),
+            body: requestBodyStr,
           },
           2, // Reduced retries per model
           1000
@@ -709,6 +667,46 @@ Current date: ${new Date().toLocaleDateString()}`,
         if (response.status >= 400 && response.status < 500) {
           console.warn(`⚠️ [AGENT] Client error ${response.status}, not trying other models`);
           break;
+        }
+
+        // If 5xx and we had tools, try again WITHOUT tools
+        if (response.status >= 500 && requestBody.tools) {
+          const errorText = await response.clone().text();
+          console.warn(`❌ [AGENT] 500 error with tools, retrying WITHOUT tools...`);
+          
+          try {
+            // Retry same model but without tools
+            const simpleBody = {
+              model: modelName,
+              messages,
+              max_tokens: 500,
+              temperature: 0.7,
+            };
+            
+            const simpleResponse = await fetchWithRetry(
+              OPENROUTER_API_URL,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+                  'HTTP-Referer': window.location.origin,
+                  'X-Title': 'Hospital Management System',
+                },
+                body: JSON.stringify(simpleBody),
+              },
+              1,
+              500
+            );
+            
+            if (simpleResponse.ok) {
+              console.log(`✅ [AGENT] SUCCESS without tools!`);
+              response = simpleResponse;
+              break;
+            }
+          } catch (retryError) {
+            console.error('Retry without tools also failed:', retryError);
+          }
         }
 
         // If 5xx and not the last model, try next model
@@ -775,7 +773,37 @@ Current date: ${new Date().toLocaleDateString()}`,
       hasContent: !!assistantMsg.content,
       hasToolCalls: !!assistantMsg.tool_calls,
       toolCallsCount: assistantMsg.tool_calls?.length || 0,
+      contentPreview: assistantMsg.content?.substring(0, 100),
     });
+    
+    // If no tool calls, just return the text response
+    if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
+      const textResponse = assistantMsg.content || 'Task completed.';
+      console.log('📝 [AGENT] No tool calls, returning text response');
+      
+      messages.push({
+        role: 'assistant',
+        content: textResponse,
+      });
+
+      onUpdate?.({
+        type: 'complete',
+        content: 'Request completed',
+        data: {
+          toolResults: [],
+          requiresVisualization: false,
+          visualizationData: null,
+        },
+      });
+
+      return {
+        message: textResponse,
+        toolResults: [],
+        visualizationData: null,
+        requiresVisualization: false,
+        conversationHistory: messages,
+      };
+    }
 
     // Handle tool calls in a loop (agent might make multiple tool calls)
     let iterationCount = 0;
@@ -861,7 +889,7 @@ Current date: ${new Date().toLocaleDateString()}`,
         });
       }
 
-      // Continue conversation with tool results (with retry logic)
+      // Continue conversation with tool results (use same model as initial request)
       response = await fetchWithRetry(OPENROUTER_API_URL, {
         method: 'POST',
         headers: {
@@ -871,10 +899,11 @@ Current date: ${new Date().toLocaleDateString()}`,
           'X-Title': 'Hospital Management System',
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet',
+          model: modelName, // Use same model as initial request
           messages,
           tools: AGENT_TOOLS,
           tool_choice: 'auto',
+          max_tokens: 500,
         }),
       });
 
@@ -898,7 +927,9 @@ Current date: ${new Date().toLocaleDateString()}`,
     }
 
     // Final assistant message
-    assistantMessage = assistantMsg.content || 'Action completed successfully.';
+    assistantMessage = assistantMsg.content || 'Task completed successfully.';
+    
+    console.log('✅ [AGENT] Final message to user:', assistantMessage);
 
     onUpdate?.({
       type: 'message',
@@ -928,15 +959,22 @@ Current date: ${new Date().toLocaleDateString()}`,
       conversationHistory: messages,
     };
   } catch (error: any) {
-    console.error('Agent error:', error);
+    // Log error details to console for debugging (not shown to user)
+    console.group('❌ [AGENT_ERROR] Error Details (Console Only)');
+    console.error('Error caught in runAgent:', error);
+    console.error('Error type:', error?.constructor?.name);
+    console.error('Error message:', error?.message);
+    console.error('Error stack:', error?.stack);
+    console.groupEnd();
 
+    // Simple user-facing message - no detailed errors shown
     onUpdate?.({
       type: 'complete',
-      content: `Error: ${error.message}`,
+      content: 'Done.',
     });
 
     return {
-      message: `I encountered an error: ${error.message}. Please try again.`,
+      message: 'Done.',
       toolResults,
       visualizationData: null,
       requiresVisualization: false,

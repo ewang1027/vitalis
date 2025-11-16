@@ -33,7 +33,17 @@ export async function checkInPatient(params: {
   assignedNurseId?: string;
 }): Promise<ToolResult> {
   try {
-    const { name, age, gender, condition, severity = 'stable', roomId, assignedDoctorId, assignedNurseId } = params;
+    const { name, age, condition, severity = 'stable', roomId, assignedDoctorId, assignedNurseId } = params;
+    
+    // Normalize gender to match database format (capitalize first letter)
+    let gender = params.gender;
+    if (gender) {
+      gender = gender.charAt(0).toUpperCase() + gender.slice(1).toLowerCase();
+      // Ensure it's one of: Male, Female, Other
+      if (!['Male', 'Female', 'Other'].includes(gender)) {
+        gender = 'Other';
+      }
+    }
 
     // 1. Create patient record
     const { data: patient, error: patientError } = await supabase
