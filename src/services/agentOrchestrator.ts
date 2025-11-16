@@ -540,14 +540,18 @@ export async function runAgent(
   const messages: AgentMessage[] = [
     {
       role: 'system',
-      content: `You are a hospital assistant AI. Help with patient check-ins, room info, tasks, and operations.
+      content: `Hospital AI assistant. When user provides patient info, IMMEDIATELY call check_in_patient tool.
 
-Key Rules:
-- For patient check-in: Use check_in_patient tool with the provided details
-- If tools not available: Confirm "I've recorded the patient check-in for [name]. The system will process the admission."
-- Extract info from conversation history (e.g., "john smith, 24, male, flu" → name: john smith, age: 24, gender: male, condition: flu)
-- ALWAYS confirm the action was completed in your response
-- Be concise and helpful
+Example:
+User: "john smith, 24, male, flu"
+You: Call check_in_patient({name: "john smith", age: 24, gender: "male", condition: "flu", severity: "stable"})
+
+Rules:
+- Extract all patient info from conversation history
+- Call check_in_patient tool immediately when you have name, age, gender, condition
+- Default severity to "stable" if not specified
+- Gender: capitalize first letter (Male/Female/Other)
+- After tool executes, explain what happened to the user
 
 Date: ${new Date().toLocaleDateString()}`,
     },
@@ -599,24 +603,18 @@ Date: ${new Date().toLocaleDateString()}`,
         console.log(`🎯 [AGENT] Trying model: ${modelName} (${modelType})`);
         modelsTried.push(modelName);
 
-        // TEMPORARY FIX: Try without tools first to isolate 500 error
-        // If tools are causing issues, we'll handle it manually
+        // ALWAYS include tools - they're essential for functionality
         const requestBody: any = {
           model: modelName,
           messages,
-          max_tokens: 500, // Limit response size
+          max_tokens: 1000, // Increased for better responses
           temperature: 0.7,
+          tools: AGENT_TOOLS,
+          tool_choice: 'auto',
         };
         
-        // Only add tools if payload is small enough
-        const baseSize = new Blob([JSON.stringify(requestBody)]).size / 1024;
-        if (baseSize < 20) {
-          console.log('📦 [AGENT] Adding tools to request');
-          requestBody.tools = AGENT_TOOLS;
-          requestBody.tool_choice = 'auto';
-        } else {
-          console.warn('⚠️ [AGENT] Skipping tools due to payload size');
-        }
+        console.log('📦 [AGENT] Including tools in request');
+
 
         console.log('📤 [AGENT] Request body:', {
           model: requestBody.model,
@@ -891,7 +889,7 @@ Date: ${new Date().toLocaleDateString()}`,
         });
       }
 
-      // Continue conversation with tool results (with retry logic)
+      // Continue conversation with tool results (use same model as initial request)
       response = await fetchWithRetry(OPENROUTER_API_URL, {
         method: 'POST',
         headers: {
@@ -901,10 +899,11 @@ Date: ${new Date().toLocaleDateString()}`,
           'X-Title': 'Hospital Management System',
         },
         body: JSON.stringify({
-          model: 'anthropic/claude-3.5-sonnet',
+          model: modelName, // Use same model as initial request
           messages,
           tools: AGENT_TOOLS,
           tool_choice: 'auto',
+          max_tokens: 500,
         }),
       });
 
