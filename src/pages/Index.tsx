@@ -5,7 +5,10 @@ import { ChatInterface } from '@/components/ChatInterface';
 import { Hospital3DMap } from '@/components/Hospital3DMap';
 import { NotificationBell } from '@/components/NotificationBell';
 import { RoomDetailView } from '@/components/RoomDetailView';
-import { ESP32Widget } from '@/components/ESP32Widget';
+import { InventoryPage } from '@/components/InventoryPage';
+import { LocationsPage } from '@/components/LocationsPage';
+import { MaintenancePage } from '@/components/MaintenancePage';
+import { ReportsPage } from '@/components/ReportsPage';
 import {
   useCurrentUser,
   useEquipment,
@@ -163,13 +166,6 @@ const Index = ({ onLogout }: IndexProps) => {
                 />
               </div>
             )}
-
-            {/* ESP32 Hardware Monitor Widget - Only show when not in room detail view */}
-            {!roomDetailViewId && (
-              <div style={{ position: 'absolute', bottom: '50px', right: '16px', zIndex: 10 }}>
-                <ESP32Widget />
-              </div>
-            )}
           </div>
         </ResizablePanel>
 
@@ -255,7 +251,7 @@ const Index = ({ onLogout }: IndexProps) => {
             {/* Draggable Resize Handle */}
             <ResizableHandle className="w-1 cursor-col-resize order-1" style={{ backgroundColor: 'hsl(var(--border-medium))' }} />
 
-            <ResizablePanel defaultSize={30} minSize={15} maxSize={50} collapsible={true} className="order-0">
+            <ResizablePanel defaultSize={30} minSize={15} maxSize={30} collapsible={true} className="order-0">
               <div className="h-full flex flex-col" style={{ backgroundColor: 'hsl(var(--bg-middle))' }}>
                 {/* Header with collapse button */}
                 <div className="border-b p-3 flex items-center justify-between flex-shrink-0" style={{ borderColor: 'hsl(var(--border-light))' }}>
@@ -293,6 +289,14 @@ const Index = ({ onLogout }: IndexProps) => {
                       }}
                       onDataUpdate={handleDataUpdate}
                     />
+                  ) : activeTab === 'inventory' ? (
+                    <InventoryPage />
+                  ) : activeTab === 'locations' ? (
+                    <LocationsPage />
+                  ) : activeTab === 'maintenance' ? (
+                    <MaintenancePage />
+                  ) : activeTab === 'reports' ? (
+                    <ReportsPage />
                   ) : (
                     <div className="p-6 flex-1">
                       <div className="rounded-lg p-8 text-center" style={{ backgroundColor: 'hsl(var(--bg-tertiary))' }}>
