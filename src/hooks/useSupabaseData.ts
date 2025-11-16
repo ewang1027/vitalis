@@ -80,6 +80,7 @@ export function usePatients(activeOnly = true) {
   const [patients, setPatients] = useState<Patient[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function fetchPatients() {
@@ -93,6 +94,7 @@ export function usePatients(activeOnly = true) {
         const { data, error } = await query.order('admission_date', { ascending: false })
 
         if (error) throw error
+        console.log('🔄 Patients fetched:', data?.length || 0, 'patients')
         setPatients(data || [])
       } catch (err) {
         setError(err as Error)
@@ -102,9 +104,14 @@ export function usePatients(activeOnly = true) {
     }
 
     fetchPatients()
-  }, [activeOnly])
+  }, [activeOnly, refreshKey])
 
-  return { patients, loading, error }
+  const refetch = () => {
+    console.log('🔄 Refetching patients data...')
+    setRefreshKey(prev => prev + 1)
+  }
+
+  return { patients, loading, error, refetch }
 }
 
 // Hook for fetching rooms
@@ -112,6 +119,7 @@ export function useRooms() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     async function fetchRooms() {
@@ -122,7 +130,7 @@ export function useRooms() {
           .order('room_number', { ascending: true })
 
         if (error) throw error
-        console.log('Rooms fetched:', data?.length || 0, 'rooms')
+        console.log('🔄 Rooms fetched:', data?.length || 0, 'rooms')
         setRooms(data || [])
       } catch (err) {
         setError(err as Error)
@@ -133,9 +141,14 @@ export function useRooms() {
     }
 
     fetchRooms()
-  }, [])
+  }, [refreshKey])
 
-  return { rooms, loading, error }
+  const refetch = () => {
+    console.log('🔄 Refetching rooms data...')
+    setRefreshKey(prev => prev + 1)
+  }
+
+  return { rooms, loading, error, refetch }
 }
 
 // Hook for fetching equipment/assets
