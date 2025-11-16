@@ -1,5 +1,5 @@
-import React, { useRef, useState, Suspense } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import React, { useRef, useState, Suspense, useEffect, useMemo } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Text, Html, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Database } from '@/lib/supabase';
@@ -339,6 +339,74 @@ return (
 );
 }
 
+// Camera Controller for smooth animations
+function CameraController({
+targetPosition,
+targetLookAt,
+selectedRoomId
+}: {
+targetPosition: [number, number, number] | null;
+targetLookAt: [number, number, number] | null;
+selectedRoomId: string | null;
+}) {
+const { camera } = useThree();
+const controlsRef = useRef<any>(null);
+const animatingRef = useRef(false);
+const targetPosRef = useRef<THREE.Vector3 | null>(null);
+const targetLookRef = useRef<THREE.Vector3 | null>(null);
+const userInteractingRef = useRef(false);
+
+// Set animation targets when they change
+useEffect(() => {
+if (targetPosition && targetLookAt) {
+targetPosRef.current = new THREE.Vector3(...targetPosition);
+targetLookRef.current = new THREE.Vector3(...targetLookAt);
+animatingRef.current = true;
+userInteractingRef.current = false;
+}
+}, [targetPosition, targetLookAt, selectedRoomId]);
+
+useFrame(() => {
+// Only animate if user is not interacting
+if (animatingRef.current && !userInteractingRef.current && targetPosRef.current && targetLookRef.current && controlsRef.current) {
+const distance = camera.position.distanceTo(targetPosRef.current);
+const targetDistance = controlsRef.current.target.distanceTo(targetLookRef.current);
+
+// Gentle animation that stops quickly
+camera.position.lerp(targetPosRef.current, 0.05);
+controlsRef.current.target.lerp(targetLookRef.current, 0.05);
+controlsRef.current.update();
+
+// Stop animating when close enough
+if (distance < 1 && targetDistance < 1) {
+animatingRef.current = false;
+}
+}
+});
+
+return (
+<OrbitControls
+ref={controlsRef}
+makeDefault
+enableDamping
+dampingFactor={0.05}
+minDistance={8}
+maxDistance={40}
+maxPolarAngle={Math.PI / 2.2}
+enablePan={true}
+enableRotate={true}
+enableZoom={true}
+// Detect user interaction to stop animation
+onStart={() => { userInteractingRef.current = true; }}
+onEnd={() => {
+setTimeout(() => {
+userInteractingRef.current = false;
+}, 100);
+}}
+/>
+);
+}
+
 // Help Desk component
 function HelpDesk({ position }: { position: [number, number, number] }) {
 return (
@@ -416,30 +484,6 @@ margin: '0 auto 16px'
 </div>
 );
 }
-
-export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup }: Hospital3DMapProps) {
-// Sort rooms: central rooms (storage/supplies/utilities) first, then perimeter rooms
-const sortedRooms = [...rooms].sort((a, b) => {
-const aCentral = isCentralRoom(a);
-const bCentral = isCentralRoom(b);
-if (aCentral && !bCentral) return -1;
-if (!aCentral && bCentral) return 1;
-return 0;
-});
-
-// Transform rooms from database into 3D positions
-const room3DData = sortedRooms.map((room, index) => {
-// Always use the new calculated floor plan positions for clean layout
-const position: [number, number, number] = getDefaultPosition(index);
-
-return {
-id: room.id,
-position,
-size: [3.2, 1.8, 3.2] as [number, number, number], // Clean, uniform room size
-label: room.room_name || room.room_number,
-roomData: room
-};
-});
 
 // Helper to determine if room should be in central area
 function isCentralRoom(room: Room): boolean {
@@ -522,6 +566,71 @@ Math.sin(extraAngle) * extraRadius
 ];
 }
 
+export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup }: Hospital3DMapProps) {
+// Default camera position (less aerial view) - memoized to prevent recreating on every render
+const defaultCameraPosition = useMemo<[number, number, number]>(() => [0, 20, 28], []);
+const defaultCameraLookAt = useMemo<[number, number, number]>(() => [0, 0, 0], []);
+
+// Camera animation state
+const [cameraTarget, setCameraTarget] = useState<{
+position: [number, number, number];
+lookAt: [number, number, number];
+} | null>(null);
+
+// Sort rooms and transform into 3D positions (memoized to prevent infinite loops)
+const room3DData = useMemo(() => {
+const sortedRooms = [...rooms].sort((a, b) => {
+const aCentral = isCentralRoom(a);
+const bCentral = isCentralRoom(b);
+if (aCentral && !bCentral) return -1;
+if (!aCentral && bCentral) return 1;
+return 0;
+});
+
+return sortedRooms.map((room, index) => {
+const position: [number, number, number] = getDefaultPosition(index);
+return {
+id: room.id,
+position,
+size: [3.2, 1.8, 3.2] as [number, number, number],
+label: room.room_name || room.room_number,
+roomData: room
+};
+});
+}, [rooms]);
+
+// Update camera when room is selected
+useEffect(() => {
+if (selectedRoomId) {
+const selectedRoom = room3DData.find(r => r.id === selectedRoomId);
+if (selectedRoom) {
+const [x, y, z] = selectedRoom.position;
+// Position camera above and in front of the room
+setCameraTarget({
+position: [x, y + 12, z + 12],
+lookAt: [x, y, z]
+});
+}
+} else {
+// Reset to default view when no room selected
+setCameraTarget({
+position: defaultCameraPosition,
+lookAt: defaultCameraLookAt
+});
+}
+}, [selectedRoomId, room3DData, defaultCameraPosition, defaultCameraLookAt]);
+
+// Handle popup close - reset camera to default
+const handleClosePopup = () => {
+setCameraTarget({
+position: defaultCameraPosition,
+lookAt: defaultCameraLookAt
+});
+if (onCloseRoomPopup) {
+onCloseRoomPopup();
+}
+};
+
 // Clean minimal corridor system - central area + perimeter loop
 const baseOffset = 13; // Same as in getDefaultPosition
 const corridors = [
@@ -595,7 +704,7 @@ return 'occupied';
 return (
 <div style={{ width: '100%', height: '100%', position: 'relative', background: 'linear-gradient(to bottom, #f3f4f6, #e5e7eb)' }}>
 <Suspense fallback={<LoadingFallback />}>
-<Canvas shadows camera={{ position: [0, 22, 22], fov: 60 }}>
+<Canvas shadows camera={{ position: defaultCameraPosition, fov: 60 }}>
 {/* Lighting */}
 <ambientLight intensity={0.4} />
 <directionalLight
@@ -606,14 +715,12 @@ shadow-mapSize={[2048, 2048]}
 />
 <hemisphereLight args={['#87ceeb', '#f0e68c', 0.6]} />
 
-			{/* Controls */}
-			<OrbitControls
-				enableDamping
-				dampingFactor={0.05}
-				minDistance={8}
-				maxDistance={40}
-				maxPolarAngle={Math.PI / 2.2}
-			/>
+{/* Camera Controller with smooth animations */}
+<CameraController
+targetPosition={cameraTarget?.position || defaultCameraPosition}
+targetLookAt={cameraTarget?.lookAt || defaultCameraLookAt}
+selectedRoomId={selectedRoomId}
+/>
 
 			{/* Corridors */}
 {corridors.map((corridor, idx) => (
@@ -636,36 +743,62 @@ isSelected={selectedRoomId === room.id}
 onClick={() => onRoomSelect(room.id)}
 roomData={room.roomData}
 onEnterRoom={onEnterRoom}
-onClosePopup={onCloseRoomPopup}
+onClosePopup={handleClosePopup}
 />
 ))}
 </Canvas>
 </Suspense>
 
-{/* Info Overlay */}
+{/* Compact Transparent Header */}
 <div style={{
 position: 'absolute',
-top: '16px',
-left: '16px',
-background: 'rgba(255, 255, 255, 0.9)',
-backdropFilter: 'blur(8px)',
-borderRadius: '8px',
-padding: '12px',
-boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+top: '20px',
+left: '50%',
+transform: 'translateX(-50%)',
+background: 'rgba(255, 255, 255, 0.15)',
+backdropFilter: 'blur(12px)',
+border: '1px solid rgba(255, 255, 255, 0.3)',
+borderRadius: '24px',
+padding: '16px 20px',
+display: 'flex',
+flexDirection: 'column',
+alignItems: 'center',
+gap: '12px',
+boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+zIndex: 10,
+pointerEvents: 'none'
 }}>
-<h3 style={{ fontSize: '12px', fontWeight: 'bold', color: '#1f2937', marginBottom: '8px' }}>Ward Overview</h3>
-<div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '10px' }}>
-<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-<div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#10b981' }}></div>
-<span style={{ color: '#374151' }}>Ready</span>
+<h3 style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937', margin: 0, textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>Ward Overview</h3>
+<div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+<div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+<div style={{
+width: '10px',
+height: '10px',
+borderRadius: '50%',
+background: '#10b981',
+boxShadow: '0 2px 4px rgba(16, 185, 129, 0.4)'
+}}></div>
+<span style={{ color: '#1f2937', fontSize: '11px', fontWeight: '600', textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>Ready</span>
 </div>
-<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-<div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#f59e0b' }}></div>
-<span style={{ color: '#374151' }}>Occupied</span>
+<div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+<div style={{
+width: '10px',
+height: '10px',
+borderRadius: '50%',
+background: '#f59e0b',
+boxShadow: '0 2px 4px rgba(245, 158, 11, 0.4)'
+}}></div>
+<span style={{ color: '#1f2937', fontSize: '11px', fontWeight: '600', textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>Occupied</span>
 </div>
-<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-<div style={{ width: '12px', height: '12px', borderRadius: '2px', background: '#ef4444' }}></div>
-<span style={{ color: '#374151' }}>Needs Attention</span>
+<div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+<div style={{
+width: '10px',
+height: '10px',
+borderRadius: '50%',
+background: '#ef4444',
+boxShadow: '0 2px 4px rgba(239, 68, 68, 0.4)'
+}}></div>
+<span style={{ color: '#1f2937', fontSize: '11px', fontWeight: '600', textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>Needs Attention</span>
 </div>
 </div>
 </div>
