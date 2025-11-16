@@ -62,24 +62,37 @@ export function ChatInterface({ initialMessages, userId, roomId, contextData, on
 
   // Ref to track if we've initialized messages for this room
   const initializedRoomRef = useRef<string | null | undefined>(undefined);
+  const prevRoomIdRef = useRef<string | null | undefined>(undefined);
 
-  // Initialize messages only when room changes or on first mount
+  // Initialize messages only when room actually changes
   useEffect(() => {
-    // Only update if room changed or first initialization
-    if (initializedRoomRef.current !== roomId) {
+    // Only reset when roomId changes, not on every initialMessages change
+    if (prevRoomIdRef.current !== roomId) {
+      console.log('🔄 [CHAT] Room changed, initializing messages:', { from: prevRoomIdRef.current, to: roomId });
       setMessages(initialMessages || []);
       setAgentConversationHistory([]);
+      prevRoomIdRef.current = roomId;
       initializedRoomRef.current = roomId;
     }
-  }, [roomId, initialMessages]);
+  }, [roomId]); // Only depend on roomId, not initialMessages
 
-  // Sync messages with agent conversation history
+  // Initialize on first mount if not initialized
+  useEffect(() => {
+    if (initializedRoomRef.current === undefined && initialMessages.length > 0) {
+      console.log('🔄 [CHAT] First mount, loading initial messages:', initialMessages.length);
+      setMessages(initialMessages);
+      initializedRoomRef.current = roomId;
+    }
+  }, []); // Run only once on mount
+
+  // Sync messages with agent conversation history (only when messages change)
   useEffect(() => {
     // Convert chat messages to agent messages format
     const agentMessages: AgentMessage[] = messages.map(msg => ({
       role: msg.role as 'user' | 'assistant',
       content: msg.content
     }));
+    console.log('🔄 [CHAT] Syncing conversation history:', agentMessages.length, 'messages');
     setAgentConversationHistory(agentMessages);
   }, [messages]);
 
@@ -709,17 +722,27 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
     setInput('');
 
     try {
+      console.log('📤 [USER] Sending message:', messageText);
+      console.log('📝 [USER] Current messages count:', messages.length);
+
       // Save user message to database
       const userMessageData = await saveMessage('user', messageText);
+      console.log('💾 [USER] Message saved to DB:', userMessageData?.id);
 
       // Add user message to UI immediately
       const userMessage = {
         id: userMessageData?.id || `temp-${Date.now()}`,
-        role: 'user',
+        role: 'user' as const,
         content: messageText,
         created_at: new Date().toISOString()
       };
-      setMessages(prev => [...prev, userMessage]);
+
+      console.log('➕ [USER] Adding user message to state');
+      setMessages(prev => {
+        const newMessages = [...prev, userMessage];
+        console.log('📝 [USER] New messages array length:', newMessages.length);
+        return newMessages;
+      });
 
       // Try to parse as task command first
       const availableRoomIds = contextData?.rooms?.map(r => r.id) || [];
@@ -902,9 +925,17 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
           );
 
           console.log('✅ [AGENT] Agent response received:', agentResponse);
+          console.log('📊 [AGENT] Response details:', {
+            hasMessage: !!agentResponse.message,
+            messageLength: agentResponse.message?.length,
+            toolResultsCount: agentResponse.toolResults?.length,
+            requiresVisualization: agentResponse.requiresVisualization,
+            conversationHistoryLength: agentResponse.conversationHistory?.length,
+          });
 
-          // Update conversation history
-          setAgentConversationHistory(agentResponse.conversationHistory);
+          // DON'T update conversation history here - it causes sync issues
+          // The messages state will be updated below, which triggers the sync effect
+          // setAgentConversationHistory(agentResponse.conversationHistory);
 
           // Handle visualizations
           if (agentResponse.requiresVisualization && agentResponse.visualizationData) {
@@ -931,16 +962,25 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
           // Display agent's response
           const aiResponse = agentResponse.message;
           console.log('🤖 [AGENT] Displaying AI response:', aiResponse);
+          console.log('💾 [AGENT] Current messages count before adding:', messages.length);
 
           // Save and display the AI message
           const aiMessageData = await saveMessage('assistant', aiResponse);
+          console.log('💾 [AGENT] Message saved to DB:', aiMessageData?.id);
+
           const aiMessage = {
             id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-            role: 'assistant',
+            role: 'assistant' as const,
             content: aiResponse,
             created_at: new Date().toISOString()
           };
-          setMessages(prev => [...prev, aiMessage]);
+
+          console.log('➕ [AGENT] Adding AI message to state:', aiMessage);
+          setMessages(prev => {
+            const newMessages = [...prev, aiMessage];
+            console.log('📝 [AGENT] New messages array length:', newMessages.length);
+            return newMessages;
+          });
 
         } catch (agentError) {
           console.error('❌ [AGENT] Error:', agentError);
