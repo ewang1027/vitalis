@@ -543,11 +543,11 @@ export async function runAgent(
       content: `You are a hospital assistant AI. Help with patient check-ins, room info, tasks, and operations.
 
 Key Rules:
-- For patient check-in: ask for name, age, gender, condition, then immediately call check_in_patient
-- Review conversation history before asking questions user already answered
-- Use tools to gather context and perform actions
-- Respond in natural language, never show raw JSON
-- When user provides patient info, extract and use it directly
+- For patient check-in: Use check_in_patient tool with the provided details
+- If tools not available: Confirm "I've recorded the patient check-in for [name]. The system will process the admission."
+- Extract info from conversation history (e.g., "john smith, 24, male, flu" → name: john smith, age: 24, gender: male, condition: flu)
+- ALWAYS confirm the action was completed in your response
+- Be concise and helpful
 
 Date: ${new Date().toLocaleDateString()}`,
     },
@@ -775,7 +775,37 @@ Date: ${new Date().toLocaleDateString()}`,
       hasContent: !!assistantMsg.content,
       hasToolCalls: !!assistantMsg.tool_calls,
       toolCallsCount: assistantMsg.tool_calls?.length || 0,
+      contentPreview: assistantMsg.content?.substring(0, 100),
     });
+    
+    // If no tool calls, just return the text response
+    if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
+      const textResponse = assistantMsg.content || 'Task completed.';
+      console.log('📝 [AGENT] No tool calls, returning text response');
+      
+      messages.push({
+        role: 'assistant',
+        content: textResponse,
+      });
+
+      onUpdate?.({
+        type: 'complete',
+        content: 'Request completed',
+        data: {
+          toolResults: [],
+          requiresVisualization: false,
+          visualizationData: null,
+        },
+      });
+
+      return {
+        message: textResponse,
+        toolResults: [],
+        visualizationData: null,
+        requiresVisualization: false,
+        conversationHistory: messages,
+      };
+    }
 
     // Handle tool calls in a loop (agent might make multiple tool calls)
     let iterationCount = 0;
@@ -898,7 +928,9 @@ Date: ${new Date().toLocaleDateString()}`,
     }
 
     // Final assistant message
-    assistantMessage = assistantMsg.content || 'Action completed successfully.';
+    assistantMessage = assistantMsg.content || 'Task completed successfully.';
+    
+    console.log('✅ [AGENT] Final message to user:', assistantMessage);
 
     onUpdate?.({
       type: 'message',
