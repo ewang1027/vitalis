@@ -280,6 +280,9 @@ export function useChatMessages(roomId?: string) {
           query = query.is('room_id', null)
         }
 
+        // Filter out archived messages to ensure patient privacy
+        query = query.eq('is_archived', false)
+
         const { data, error } = await query.order('created_at', { ascending: true })
 
         if (error) throw error

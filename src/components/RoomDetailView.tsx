@@ -287,7 +287,7 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
 
       {/* Equipment Info Panel */}
       {selectedEquipment && (
-        <div className="absolute bottom-4 left-4 right-4 md:left-auto md:w-96 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg">
+        <div className="absolute bottom-32 left-4 right-4 md:left-auto md:w-96 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg">
           <div className="flex items-start justify-between mb-3">
             <div className="flex items-center gap-2">
               <Info className="h-5 w-5" />
@@ -334,65 +334,40 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
         </div>
       )}
 
-      {/* ESP32 Environmental Monitor */}
-      <div className="absolute top-20 left-4 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg w-64">
+      {/* Patient Vitals Monitor */}
+      <div className="absolute bottom-24 left-4 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg w-64">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-semibold flex items-center gap-2">
-            <Thermometer className="h-4 w-4 text-orange-500" />
-            Room Environment
+            <Info className="h-4 w-4 text-red-500" />
+            Patient Vitals
           </h3>
-          {esp32Connected ? (
-            <Badge variant="default" className="bg-green-500 text-white flex items-center gap-1 px-2 py-0">
-              <Wifi className="h-3 w-3" />
-              Live
-            </Badge>
-          ) : (
-            <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0">
-              <WifiOff className="h-3 w-3" />
-              Offline
-            </Badge>
-          )}
+          <Badge variant="default" className="bg-green-500 text-white flex items-center gap-1 px-2 py-0">
+            <Wifi className="h-3 w-3" />
+            Live
+          </Badge>
         </div>
-        {esp32Data ? (
-          <div className="space-y-2 text-sm">
-            {esp32Data.temperature !== undefined && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Thermometer className="h-4 w-4 text-orange-500" />
-                  <span className="text-muted-foreground">Temperature</span>
-                </div>
-                <span className="font-medium">{esp32Data.temperature.toFixed(1)}°C</span>
-              </div>
-            )}
-            {esp32Data.humidity !== undefined && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Droplets className="h-4 w-4 text-blue-500" />
-                  <span className="text-muted-foreground">Humidity</span>
-                </div>
-                <span className="font-medium">{esp32Data.humidity.toFixed(1)}%</span>
-              </div>
-            )}
-            {esp32Data.batteryLevel !== undefined && (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Battery className="h-4 w-4 text-green-500" />
-                  <span className="text-muted-foreground">Battery</span>
-                </div>
-                <span className="font-medium">{esp32Data.batteryLevel.toFixed(0)}%</span>
-              </div>
-            )}
-            {esp32Data.deviceId && (
-              <div className="text-xs text-muted-foreground pt-2 border-t">
-                Device: {esp32Data.deviceId.slice(-8)}
-              </div>
-            )}
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Heart Rate:</span>
+            <span className="font-medium text-red-600">72 bpm</span>
           </div>
-        ) : (
-          <div className="text-sm text-muted-foreground text-center py-2">
-            {esp32Connected ? 'Waiting for data...' : 'Connect ESP32 to monitor room conditions'}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Blood Pressure:</span>
+            <span className="font-medium">120/80 mmHg</span>
           </div>
-        )}
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">O2 Saturation:</span>
+            <span className="font-medium text-blue-600">98%</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Temperature:</span>
+            <span className="font-medium">98.6°F</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Resp. Rate:</span>
+            <span className="font-medium">16 /min</span>
+          </div>
+        </div>
       </div>
 
       {/* Vitals Display (if patient exists) */}
@@ -422,17 +397,6 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
           </div>
         </div>
       )}
-
-      {/* Controls Help */}
-      <div className="absolute bottom-4 left-4 bg-background/95 backdrop-blur border rounded-lg p-3 shadow-lg text-xs">
-        <p className="font-semibold mb-1">Controls:</p>
-        <ul className="space-y-0.5 text-muted-foreground">
-          <li>• Left click + drag: Rotate view</li>
-          <li>• Right click + drag: Pan view</li>
-          <li>• Scroll: Zoom in/out</li>
-          <li>• Click equipment: View details</li>
-        </ul>
-      </div>
     </div>
   );
 }
