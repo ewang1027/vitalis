@@ -77,21 +77,55 @@ export async function checkInPatient(params: {
       const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
       targetRoom = data;
     } else {
-      // Find available room (check both 'ready' and 'available' statuses)
-      console.log('🔍 [CHECK_IN] Searching for available room...');
-      const { data: availableRooms, error: roomError } = await supabase
+      // Find available room - PRIORITIZE General Ward rooms starting from room-102
+      console.log('🔍 [CHECK_IN] Searching for available General Ward room...');
+      
+      // First, try to find General Ward rooms starting from room-102
+      const { data: generalWardRooms, error: wardError } = await supabase
         .from('rooms')
         .select('*')
         .in('status', ['ready', 'available'])
+        .eq('room_type', 'General Ward')
+        .gte('room_number', 'room-102') // Start from room-102 and up
         .order('room_number', { ascending: true })
         .limit(1);
       
-      console.log('🔍 [CHECK_IN] Found rooms:', availableRooms?.length || 0);
-      if (roomError) {
-        console.error('❌ [CHECK_IN] Room search error:', roomError);
+      if (wardError) {
+        console.error('❌ [CHECK_IN] Ward room search error:', wardError);
       }
       
-      targetRoom = availableRooms?.[0];
+      if (generalWardRooms && generalWardRooms.length > 0) {
+        targetRoom = generalWardRooms[0];
+        console.log('✅ [CHECK_IN] Found General Ward room:', targetRoom.room_number);
+      } else {
+        // Fallback: try any General Ward room (including below 102)
+        console.log('⚠️ [CHECK_IN] No General Ward rooms >= 102, checking all General Ward rooms...');
+        const { data: anyWardRooms } = await supabase
+          .from('rooms')
+          .select('*')
+          .in('status', ['ready', 'available'])
+          .eq('room_type', 'General Ward')
+          .order('room_number', { ascending: true })
+          .limit(1);
+        
+        if (anyWardRooms && anyWardRooms.length > 0) {
+          targetRoom = anyWardRooms[0];
+          console.log('✅ [CHECK_IN] Found General Ward room:', targetRoom.room_number);
+        } else {
+          // Last resort: any available room
+          console.log('⚠️ [CHECK_IN] No General Ward rooms available, using any available room...');
+          const { data: anyRooms } = await supabase
+            .from('rooms')
+            .select('*')
+            .in('status', ['ready', 'available'])
+            .order('room_number', { ascending: true })
+            .limit(1);
+          
+          targetRoom = anyRooms?.[0];
+        }
+      }
+      
+      console.log('🔍 [CHECK_IN] Selected room:', targetRoom?.room_number || 'None found');
     }
 
     if (!targetRoom) {
