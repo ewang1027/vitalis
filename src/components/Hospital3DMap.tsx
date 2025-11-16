@@ -188,8 +188,8 @@ function HelpDesk({ position }: { position: [number, number, number] }) {
       <mesh position={[0, 2.5, 0]}>
         <cylinderGeometry args={[1.5, 1.5, 0.2, 8]} />
         <meshStandardMaterial
-          color="#3b82f6"
-          emissive="#3b82f6"
+          color="#22c55e"
+          emissive="#22c55e"
           emissiveIntensity={0.3}
         />
       </mesh>
@@ -546,6 +546,197 @@ function PopupPositionTracker({
   return null;
 }
 
+// 2D Map Component
+function Hospital2DMap({
+  rooms,
+  roomLayouts,
+  hallways,
+  floorSections,
+  selectedRoomId,
+  onRoomSelect,
+  getRoomStatus
+}: {
+  rooms: Room[];
+  roomLayouts: Map<string, {
+    id: string;
+    label: string;
+    position: [number, number, number];
+    labelRotation: number;
+  }>;
+  hallways: Array<{ start: [number, number, number]; end: [number, number, number] }>;
+  floorSections: Array<{ position: [number, number, number]; size: [number, number] }>;
+  selectedRoomId: string | null;
+  onRoomSelect: (roomId: string) => void;
+  getRoomStatus: (roomId: string) => 'ready' | 'needs-attention' | 'occupied';
+}) {
+  const [hoveredRoom, setHoveredRoom] = useState<string | null>(null);
+
+  // Calculate SVG viewBox based on room positions
+  const bounds = useMemo(() => {
+    const positions = Array.from(roomLayouts.values()).map(r => r.position);
+    if (positions.length === 0) return { minX: -30, maxX: 30, minZ: -30, maxZ: 30 };
+
+    const xValues = positions.map(p => p[0]);
+    const zValues = positions.map(p => p[2]);
+
+    return {
+      minX: Math.min(...xValues) - 10,
+      maxX: Math.max(...xValues) + 10,
+      minZ: Math.min(...zValues) - 10,
+      maxZ: Math.max(...zValues) + 10
+    };
+  }, [roomLayouts]);
+
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxZ - bounds.minZ;
+
+  const getStatusColor = (status: 'ready' | 'needs-attention' | 'occupied') => {
+    switch (status) {
+      case 'ready': return '#22c55e';
+      case 'needs-attention': return '#ef4444';
+      case 'occupied': return '#eab308';
+      default: return '#6b7280';
+    }
+  };
+
+  // Safety check for empty data
+  if (roomLayouts.size === 0) {
+    return (
+      <div style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#4b5563',
+        color: 'white',
+        fontSize: '16px'
+      }}>
+        Loading map...
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#4b5563',
+      overflow: 'hidden'
+    }}>
+      <svg
+        viewBox={`${bounds.minX} ${bounds.minZ} ${width} ${height}`}
+        style={{
+          width: '100%',
+          height: '100%',
+          maxWidth: '100%',
+          maxHeight: '100%'
+        }}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        {/* Floor Sections - subtle background areas */}
+        {floorSections.map((floor, index) => (
+          <rect
+            key={`floor-${index}`}
+            x={floor.position[0] - floor.size[0] / 2}
+            y={floor.position[2] - floor.size[1] / 2}
+            width={floor.size[0]}
+            height={floor.size[1]}
+            fill="#d1d5db"
+            opacity={0.3}
+            rx={0.5}
+          />
+        ))}
+
+        {/* Hallways - corridor structure */}
+        {hallways.map((hallway, index) => (
+          <line
+            key={`hallway-${index}`}
+            x1={hallway.start[0]}
+            y1={hallway.start[2]}
+            x2={hallway.end[0]}
+            y2={hallway.end[2]}
+            stroke="#9ca3af"
+            strokeWidth={0.8}
+            opacity={0.6}
+            strokeLinecap="round"
+          />
+        ))}
+
+        {/* Central Help Desk */}
+        <g>
+          <circle
+            cx={0}
+            cy={0}
+            r={3}
+            fill="#22c55e"
+            stroke="#16a34a"
+            strokeWidth={0.3}
+          />
+          <text
+            x={0}
+            y={0.5}
+            textAnchor="middle"
+            fill="white"
+            fontSize={1.2}
+            fontWeight="bold"
+          >
+            HELP DESK
+          </text>
+        </g>
+
+        {/* Rooms */}
+        {Array.from(roomLayouts.values()).map((layout) => {
+          const status = getRoomStatus(layout.id);
+          const color = getStatusColor(status);
+          const isSelected = selectedRoomId === layout.id;
+          const isHovered = hoveredRoom === layout.id;
+          const scale = isSelected ? 1.15 : isHovered ? 1.08 : 1;
+
+          return (
+            <g
+              key={layout.id}
+              transform={`translate(${layout.position[0]}, ${layout.position[2]})`}
+              style={{ cursor: 'pointer' }}
+              onClick={() => onRoomSelect(layout.id)}
+              onMouseEnter={() => setHoveredRoom(layout.id)}
+              onMouseLeave={() => setHoveredRoom(null)}
+            >
+              {/* Room rectangle */}
+              <rect
+                x={-1.5 * scale}
+                y={-1.5 * scale}
+                width={3 * scale}
+                height={3 * scale}
+                fill={color}
+                stroke={isSelected ? 'white' : color}
+                strokeWidth={isSelected ? 0.3 : 0.1}
+                opacity={isHovered || isSelected ? 0.9 : 0.7}
+                rx={0.3}
+              />
+
+              {/* Room label */}
+              <text
+                x={0}
+                y={0.3}
+                textAnchor="middle"
+                fill="white"
+                fontSize={0.6}
+                fontWeight={isSelected ? 'bold' : 'normal'}
+              >
+                {layout.label}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
 export function Hospital3DMap({
   rooms,
   equipment,
@@ -555,6 +746,14 @@ export function Hospital3DMap({
   const { roomLayouts, hallways, floorSections, walls } = useMemo(() => createHospitalLayout(rooms), [rooms]);
   const [showPopup, setShowPopup] = useState(false);
   const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
+  const [is3DView, setIs3DView] = useState(true);
+
+  // Debug logging
+  useEffect(() => {
+    console.log('Hospital3DMap - is3DView:', is3DView);
+    console.log('Hospital3DMap - rooms count:', rooms.length);
+    console.log('Hospital3DMap - roomLayouts size:', roomLayouts.size);
+  }, [is3DView, rooms.length, roomLayouts.size]);
 
   // Subscribe to active tasks for visualization
   const { activeTasks } = useTaskSubscription();
@@ -577,6 +776,35 @@ export function Hospital3DMap({
     return 'ready';
   };
 
+  // Calculate overview statistics
+  const overviewStats = useMemo(() => {
+    const stats = {
+      stable: 0,
+      moderate: 0,
+      critical: 0,
+      empty: 0
+    };
+
+    rooms.forEach(room => {
+      const status = room.status?.toLowerCase();
+
+      if (status === 'ready' || status === 'available') {
+        stats.empty++;
+      } else if (status === 'critical' || status === 'needs-attention' || status === 'maintenance') {
+        stats.critical++;
+      } else if (status === 'moderate' || status === 'cleaning') {
+        stats.moderate++;
+      } else if (status === 'occupied' || status === 'in-use' || status === 'stable') {
+        stats.stable++;
+      } else {
+        // Default to empty if status is unclear
+        stats.empty++;
+      }
+    });
+
+    return stats;
+  }, [rooms]);
+
   const selectedRoom = selectedRoomId ? rooms.find(r => r.id === selectedRoomId) : null;
   const selectedRoomLayout = selectedRoomId ? roomLayouts.get(selectedRoomId) : null;
 
@@ -591,8 +819,66 @@ export function Hospital3DMap({
       position: 'relative',
       background: '#4b5563'
     }}>
-      <Suspense fallback={<div>Loading...</div>}>
-        <Canvas shadows camera={{ position: [38, 18, -11], fov: 60 }}>
+      {/* View Toggle Switch */}
+      <div style={{
+        position: 'absolute',
+        bottom: '16px',
+        left: '16px',
+        zIndex: 1000,
+        background: 'rgba(31, 41, 55, 0.95)',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        borderRadius: '8px',
+        padding: '4px',
+        display: 'flex',
+        gap: '4px'
+      }}>
+        <div
+          onClick={() => setIs3DView(false)}
+          style={{
+            position: 'relative',
+            padding: '8px 16px',
+            fontSize: '14px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            color: !is3DView ? 'white' : 'rgba(255, 255, 255, 0.5)',
+            zIndex: 1
+          }}
+        >
+          2D
+        </div>
+        <div
+          onClick={() => setIs3DView(true)}
+          style={{
+            position: 'relative',
+            padding: '8px 16px',
+            fontSize: '14px',
+            fontWeight: '600',
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            color: is3DView ? 'white' : 'rgba(255, 255, 255, 0.5)',
+            zIndex: 1
+          }}
+        >
+          3D
+        </div>
+        {/* Sliding indicator */}
+        <div style={{
+          position: 'absolute',
+          top: '4px',
+          left: is3DView ? 'calc(50% + 2px)' : '4px',
+          width: 'calc(50% - 6px)',
+          height: 'calc(100% - 8px)',
+          background: 'rgba(34, 197, 94, 0.8)',
+          borderRadius: '6px',
+          transition: 'left 0.3s ease',
+          zIndex: 0
+        }} />
+      </div>
+
+      {is3DView ? (
+        <Suspense fallback={<div>Loading...</div>}>
+          <Canvas shadows camera={{ position: [38, 18, -11], fov: 60 }}>
           <ambientLight intensity={0.7} />
           <directionalLight position={[10, 20, 10]} intensity={1.3} castShadow />
 
@@ -646,11 +932,63 @@ export function Hospital3DMap({
           <RoomTaskIndicators tasks={activeTasks} getRoomPosition={getRoomPosition} />
         </Canvas>
       </Suspense>
+      ) : (
+        <Hospital2DMap
+          rooms={rooms}
+          roomLayouts={roomLayouts}
+          hallways={hallways}
+          floorSections={floorSections}
+          selectedRoomId={selectedRoomId}
+          onRoomSelect={onRoomSelect}
+          getRoomStatus={getRoomStatus}
+        />
+      )}
+
+      {/* Overview Bar */}
+      <div style={{
+        position: 'absolute',
+        top: '16px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'rgba(31, 41, 55, 0.7)',
+        borderRadius: '8px',
+        padding: '12px 24px',
+        color: 'white',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        backdropFilter: 'blur(12px)',
+        boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: 'bold', marginRight: '8px' }}>
+            Floor 3 Overview
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '18px' }}>🟢</span>
+            <span style={{ fontSize: '14px', fontWeight: '600' }}>{overviewStats.stable}</span>
+            <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)' }}>Stable</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '18px' }}>🟡</span>
+            <span style={{ fontSize: '14px', fontWeight: '600' }}>{overviewStats.moderate}</span>
+            <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)' }}>Moderate</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '18px' }}>🔴</span>
+            <span style={{ fontSize: '14px', fontWeight: '600' }}>{overviewStats.critical}</span>
+            <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)' }}>Critical</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ fontSize: '18px' }}>⚪</span>
+            <span style={{ fontSize: '14px', fontWeight: '600' }}>{overviewStats.empty}</span>
+            <span style={{ fontSize: '13px', color: 'rgba(255, 255, 255, 0.8)' }}>Empty</span>
+          </div>
+        </div>
+      </div>
 
       {/* Status Legend */}
       <div style={{
         position: 'absolute',
-        top: '16px',
+        top: '80px',
         left: '16px',
         background: 'rgba(31, 41, 55, 0.95)',
         borderRadius: '8px',
@@ -678,19 +1016,21 @@ export function Hospital3DMap({
       </div>
 
       {/* Controls */}
-      <div style={{
-        position: 'absolute',
-        bottom: '10px',
-        right: '16px',
-        background: 'rgba(31, 41, 55, 0.95)',
-        borderRadius: '8px',
-        padding: '8px',
-        color: 'white',
-        fontSize: '12px',
-        border: '1px solid rgba(255, 255, 255, 0.1)'
-      }}>
-        Drag to rotate • Scroll to zoom • Click rooms
-      </div>
+      {is3DView && (
+        <div style={{
+          position: 'absolute',
+          bottom: '10px',
+          right: '16px',
+          background: 'rgba(31, 41, 55, 0.95)',
+          borderRadius: '8px',
+          padding: '8px',
+          color: 'white',
+          fontSize: '12px',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
+        }}>
+          Drag to rotate • Scroll to zoom • Click rooms
+        </div>
+      )}
 
     </div>
   );
