@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   MessageSquare,
-  LayoutDashboard,
   Package,
   MapPin,
   Wrench,
@@ -35,7 +34,6 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'ask', label: 'Ask Vitalis', icon: MessageSquare },
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'inventory', label: 'Inventory', icon: Package },
   { id: 'locations', label: 'Locations', icon: MapPin },
   { id: 'maintenance', label: 'Maintenance', icon: Wrench },

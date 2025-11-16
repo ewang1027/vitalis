@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from '@/components/Sidebar';
+import { RightSidebar } from '@/components/RightSidebar';
 import { ChatInterface } from '@/components/ChatInterface';
 import { Hospital3DMap } from '@/components/Hospital3DMap';
 import { NotificationBell } from '@/components/NotificationBell';
@@ -31,6 +32,7 @@ const Index = ({ onLogout }: IndexProps) => {
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
   const [isMiddlePanelCollapsed, setIsMiddlePanelCollapsed] = useState(false);
   const [roomDetailViewId, setRoomDetailViewId] = useState<string | null>(null);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
 
   // Fetch data from Supabase
   const { user: supabaseUser } = useCurrentUser();
@@ -125,12 +127,12 @@ const Index = ({ onLogout }: IndexProps) => {
         onLogout={onLogout}
       />
 
-      {/* Main Content Area - Map always visible, middle panel conditional */}
+      {/* Main Content Area - Map always visible, middle panel conditional, right sidebar */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Right Panel - Map View (Always Visible) - First in DOM for correct resize behavior */}
+        {/* Map Panel (Center) - First in DOM for correct resize behavior */}
         <ResizablePanel
-          defaultSize={activeTab ? (isMiddlePanelCollapsed ? 100 : 70) : 100}
-          minSize={50}
+          defaultSize={activeTab ? (isMiddlePanelCollapsed ? 70 : 50) : 70}
+          minSize={40}
           className="order-2"
         >
           <div className="h-full border-l relative" style={{ borderColor: 'hsl(var(--border-light))', backgroundColor: 'hsl(var(--bg-map))' }}>
@@ -164,12 +166,88 @@ const Index = ({ onLogout }: IndexProps) => {
 
             {/* ESP32 Hardware Monitor Widget - Only show when not in room detail view */}
             {!roomDetailViewId && (
-              <div style={{ position: 'absolute', bottom: '50px', right: '16px', zIndex: 100 }}>
+              <div style={{ position: 'absolute', bottom: '50px', right: '16px', zIndex: 10 }}>
                 <ESP32Widget />
               </div>
             )}
           </div>
         </ResizablePanel>
+
+        {/* Right Sidebar - Resizable and Collapsible */}
+        {!isRightSidebarCollapsed && (
+          <ResizableHandle className="w-1 cursor-col-resize order-3" style={{ backgroundColor: 'hsl(var(--border-medium))' }} />
+        )}
+
+        {isRightSidebarCollapsed ? (
+          /* Collapsed state - fixed width */
+          <div className="order-4" style={{ width: '48px', flexShrink: 0 }}>
+            <RightSidebar
+              activeTab={activeTab}
+              assets={equipment}
+              roomReadiness={[]}
+              tasks={tasks}
+              notifications={notifications.map(n => ({
+                id: n.id,
+                title: n.title,
+                message: n.message,
+                priority: n.priority as 'critical' | 'high' | 'medium' | 'low',
+                status: n.status as 'unread' | 'read' | 'dismissed',
+                timestamp: new Date(n.created_at),
+                actionLabel: n.action_label || undefined,
+                actionId: n.action_id || undefined,
+                relatedRoomId: n.related_room_id || undefined,
+                relatedAssetId: n.related_equipment_id || undefined,
+              }))}
+              selectedRoomId={selectedRoomId}
+              onRoomSelect={handleRoomSelect}
+              onAssetSelect={() => {}}
+              onTaskComplete={handleTaskComplete}
+              onTaskDismiss={handleTaskDismiss}
+              onNotificationRead={handleNotificationRead}
+              onNotificationDismiss={handleNotificationDismiss}
+              onNotificationAction={handleNotificationAction}
+              isCollapsed={isRightSidebarCollapsed}
+              onCollapsedChange={setIsRightSidebarCollapsed}
+            />
+          </div>
+        ) : (
+          /* Expanded state - resizable */
+          <ResizablePanel
+            defaultSize={30}
+            minSize={20}
+            maxSize={40}
+            className="order-4"
+          >
+            <RightSidebar
+              activeTab={activeTab}
+              assets={equipment}
+              roomReadiness={[]}
+              tasks={tasks}
+              notifications={notifications.map(n => ({
+                id: n.id,
+                title: n.title,
+                message: n.message,
+                priority: n.priority as 'critical' | 'high' | 'medium' | 'low',
+                status: n.status as 'unread' | 'read' | 'dismissed',
+                timestamp: new Date(n.created_at),
+                actionLabel: n.action_label || undefined,
+                actionId: n.action_id || undefined,
+                relatedRoomId: n.related_room_id || undefined,
+                relatedAssetId: n.related_equipment_id || undefined,
+              }))}
+              selectedRoomId={selectedRoomId}
+              onRoomSelect={handleRoomSelect}
+              onAssetSelect={() => {}}
+              onTaskComplete={handleTaskComplete}
+              onTaskDismiss={handleTaskDismiss}
+              onNotificationRead={handleNotificationRead}
+              onNotificationDismiss={handleNotificationDismiss}
+              onNotificationAction={handleNotificationAction}
+              isCollapsed={isRightSidebarCollapsed}
+              onCollapsedChange={setIsRightSidebarCollapsed}
+            />
+          </ResizablePanel>
+        )}
 
         {/* Middle Panel - Only visible when a tab is selected AND not collapsed */}
         {activeTab && !isMiddlePanelCollapsed && (

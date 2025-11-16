@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutDashboard } from 'lucide-react';
 import { WardMap } from './WardMap';
 import { RoomDetails } from './RoomDetails';
 import { TaskQueue } from './TaskQueue';
 import { NotificationPanel } from './NotificationPanel';
+import { PatientVitalsDashboard } from './PatientVitalsDashboard';
+import { PatientStatusBar } from './PatientStatusBar';
 import { Asset, RoomReadiness, Task } from '@/types/wardops';
 import { Notification } from '@/types/notifications';
 import { Button } from './ui/button';
@@ -22,6 +24,8 @@ interface RightSidebarProps {
   onNotificationRead: (id: string) => void;
   onNotificationDismiss: (id: string) => void;
   onNotificationAction?: (actionId: string, notification: Notification) => void;
+  isCollapsed?: boolean;
+  onCollapsedChange?: (collapsed: boolean) => void;
 }
 
 export function RightSidebar({
@@ -38,39 +42,62 @@ export function RightSidebar({
   onNotificationRead,
   onNotificationDismiss,
   onNotificationAction,
+  isCollapsed = false,
+  onCollapsedChange,
 }: RightSidebarProps) {
-  const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(true);
+  const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false);
 
-  // Auto-expand when a tab is selected, collapse when no tab is selected
+  // Only sync initial collapsed state from parent
   useEffect(() => {
-    if (activeTab) {
-      setIsManuallyCollapsed(false);
-    } else {
-      setIsManuallyCollapsed(true);
-    }
-  }, [activeTab]);
+    setIsManuallyCollapsed(isCollapsed);
+  }, []); // Empty dependency - only run once on mount
+
+  const handleCollapse = (collapsed: boolean) => {
+    setIsManuallyCollapsed(collapsed);
+    onCollapsedChange?.(collapsed);
+  };
 
   const selectedRoomReadiness = roomReadiness.find(
     r => r.roomId === selectedRoomId
   ) || null;
 
-  // Show collapsed state when manually collapsed
+  // Show collapsed state when manually collapsed - always show patient status bar
   if (isManuallyCollapsed) {
     return (
-      <div className="w-full h-full border-l border-border bg-bg-secondary flex items-center justify-center p-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsManuallyCollapsed(false)}
-          className="text-text-tertiary hover:text-text-primary rotate-180"
-        >
-          <ChevronRight className="h-5 w-5" />
-        </Button>
+      <div className="transition-all duration-300 ease-in-out">
+        <PatientStatusBar onExpand={() => handleCollapse(false)} />
       </div>
     );
   }
 
+  // Always show dashboard
   return (
+    <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col min-w-0 transition-all duration-300 ease-in-out animate-in slide-in-from-right">
+      {/* Collapse Button */}
+      <div className="border-b border-border p-3 flex items-center justify-between min-w-0">
+        <h3 className="text-sm font-bold text-text-primary truncate min-w-0 flex items-center gap-2">
+          Patient Dashboard
+        </h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleCollapse(true)}
+          className="text-text-tertiary hover:text-text-primary flex-shrink-0"
+          title="Collapse sidebar"
+        >
+          <LayoutDashboard className="h-4 w-4 animate-pulse" />
+        </Button>
+      </div>
+
+      {/* Content - Always Dashboard */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+        <PatientVitalsDashboard />
+      </div>
+    </div>
+  );
+
+  // Old tab-based rendering (keeping for reference but not used)
+  const oldRender = (
     <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col min-w-0">
       {/* Collapse Button */}
       <div className="border-b border-border p-3 flex items-center justify-between min-w-0">
@@ -80,7 +107,7 @@ export function RightSidebar({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setIsManuallyCollapsed(true)}
+          onClick={() => handleCollapse(true)}
           className="text-text-tertiary hover:text-text-primary flex-shrink-0"
           title="Collapse sidebar"
         >
@@ -132,11 +159,7 @@ export function RightSidebar({
         )}
 
         {activeTab === 'dashboard' && (
-          <div className="p-6 min-w-0">
-            <div className="glass-panel rounded-lg p-6 min-w-0">
-              <p className="text-sm text-text-secondary break-words">Dashboard metrics will appear here</p>
-            </div>
-          </div>
+          <PatientVitalsDashboard />
         )}
 
         {activeTab === 'inventory' && (
