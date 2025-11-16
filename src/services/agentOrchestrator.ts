@@ -536,24 +536,55 @@ export async function runAgent(
     sanitizedHistory = sanitizedHistory.slice(-MAX_HISTORY);
   }
   
-  // MUCH SHORTER system prompt to reduce payload size
+  // System prompt for hospital AI assistant
   const messages: AgentMessage[] = [
     {
       role: 'system',
-      content: `Hospital AI assistant. When user provides patient info, IMMEDIATELY call check_in_patient tool.
+      content: `You are Vitalis, a friendly and efficient AI assistant for hospital operations at HackNYU Hospital. Your goal is to help staff quickly and professionally.
 
-Example:
-User: "john smith, 24, male, flu"
-You: Call check_in_patient({name: "john smith", age: 24, gender: "male", condition: "flu", severity: "stable"})
+🎯 YOUR WORKFLOW:
+1. LISTEN: Understand what the user needs
+2. GATHER: If you need info, ask ONE clear question
+3. ACT: Call the appropriate tool immediately when you have enough info
+4. CONFIRM: After tool execution, tell user what happened in a friendly way
 
-Rules:
-- Extract all patient info from conversation history
-- Call check_in_patient tool immediately when you have name, age, gender, condition
-- Default severity to "stable" if not specified
-- Gender: capitalize first letter (Male/Female/Other)
-- After tool executes, explain what happened to the user
+📋 WHAT YOU CAN DO:
+- Check in patients (assign them to rooms automatically)
+- Discharge patients
+- Create tasks (food delivery, cleaning, equipment moves, etc.)
+- Get room/patient information
+- Find available rooms
 
-Date: ${new Date().toLocaleDateString()}`,
+💡 CONVERSATION FLOW EXAMPLES:
+
+Example 1 - Patient Check-in:
+User: "Check in a new patient"
+You: "I'd be happy to help! What's the patient's name, age, and condition?"
+User: "Joe John, 44, male, stable"
+You: [CALL check_in_patient tool]
+You: "✅ I've checked in Joe John (44, Male) to Room 102. He's all set with initial vitals recorded."
+
+Example 2 - Direct Check-in:
+User: "Check in Joe John, 44, male, not feeling well"
+You: [CALL check_in_patient tool immediately - you have enough info!]
+You: "✅ I've admitted Joe John (44, Male) to Room 102. His condition is noted as stable and initial vitals are being monitored."
+
+Example 3 - Task Creation:
+User: "Send food to room 102"
+You: [CALL create_task tool immediately]
+You: "✅ Food delivery task created for Room 102. The staff will be notified."
+
+🔑 CRITICAL RULES:
+1. Check conversation history - if you already asked for info and user responded, USE TOOLS NOW
+2. When calling check_in_patient, the tool will automatically find an available room - you don't need to specify one
+3. After ANY tool executes, explain what happened in a clear, professional but friendly way
+4. Default missing info: severity="stable", gender to capitalized (Male/Female/Other)
+5. Be concise - staff are busy. 1-2 sentences maximum after actions.
+6. NEVER say "Done." alone - always explain what was done
+
+Available tools: check_in_patient, discharge_patient, create_task, get_room_context, get_patient_context, get_hospital_context, find_available_room
+
+Today: ${new Date().toLocaleDateString()}`,
     },
     ...sanitizedHistory,
     sanitizeMessage({
@@ -779,7 +810,13 @@ Date: ${new Date().toLocaleDateString()}`,
     // If no tool calls, just return the text response
     if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
       const textResponse = assistantMsg.content || 'Task completed.';
-      console.log('📝 [AGENT] No tool calls, returning text response');
+      console.log('📝 [AGENT] No tool calls detected in response');
+      console.log('📝 [AGENT] User message was:', userMessage);
+      console.log('📝 [AGENT] AI response:', textResponse);
+      console.log('💡 [AGENT] If this should have triggered a tool call, check:');
+      console.log('   1. Does the AI response mention it needs more info?');
+      console.log('   2. Is the system prompt being followed correctly?');
+      console.log('   3. Are the tool definitions clear?');
       
       messages.push({
         role: 'assistant',
@@ -959,27 +996,23 @@ Date: ${new Date().toLocaleDateString()}`,
       conversationHistory: messages,
     };
   } catch (error: any) {
-    // Log error details to console for debugging (not shown to user)
-    console.group('❌ [AGENT_ERROR] Error Details (Console Only)');
+    // Log error details to console for debugging
+    console.group('❌ [AGENT_ERROR] Error Details');
     console.error('Error caught in runAgent:', error);
     console.error('Error type:', error?.constructor?.name);
     console.error('Error message:', error?.message);
     console.error('Error stack:', error?.stack);
     console.groupEnd();
 
-    // Simple user-facing message - no detailed errors shown
+    // Notify about error
     onUpdate?.({
       type: 'complete',
-      content: 'Done.',
+      content: 'Error occurred',
     });
 
-    return {
-      message: 'Done.',
-      toolResults,
-      visualizationData: null,
-      requiresVisualization: false,
-      conversationHistory: messages,
-    };
+    // Re-throw the error so it can be properly handled by the calling code
+    // This allows ChatInterface to show appropriate error messages to users
+    throw error;
   }
 }
 

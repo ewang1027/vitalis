@@ -33,6 +33,7 @@ export async function checkInPatient(params: {
   assignedNurseId?: string;
 }): Promise<ToolResult> {
   try {
+    console.log('🏥 [CHECK_IN] Starting patient check-in with params:', JSON.stringify(params, null, 2));
     const { name, age, condition, severity = 'stable', roomId, assignedDoctorId, assignedNurseId } = params;
     
     // Normalize gender to match database format (capitalize first letter)
@@ -61,11 +62,14 @@ export async function checkInPatient(params: {
       .single();
 
     if (patientError || !patient) {
+      console.error('❌ [CHECK_IN] Failed to create patient:', patientError);
       return {
         success: false,
         message: `Failed to create patient record: ${patientError?.message}`,
       };
     }
+    
+    console.log('✅ [CHECK_IN] Patient created:', patient.id, patient.name);
 
     // 2. Find or use provided room
     let targetRoom;
@@ -73,22 +77,33 @@ export async function checkInPatient(params: {
       const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
       targetRoom = data;
     } else {
-      // Find available room
-      const { data: availableRooms } = await supabase
+      // Find available room (check both 'ready' and 'available' statuses)
+      console.log('🔍 [CHECK_IN] Searching for available room...');
+      const { data: availableRooms, error: roomError } = await supabase
         .from('rooms')
         .select('*')
-        .eq('status', 'available')
+        .in('status', ['ready', 'available'])
+        .order('room_number', { ascending: true })
         .limit(1);
+      
+      console.log('🔍 [CHECK_IN] Found rooms:', availableRooms?.length || 0);
+      if (roomError) {
+        console.error('❌ [CHECK_IN] Room search error:', roomError);
+      }
+      
       targetRoom = availableRooms?.[0];
     }
 
     if (!targetRoom) {
+      console.error('❌ [CHECK_IN] No available room found!');
       return {
         success: false,
-        message: 'No available rooms found',
+        message: 'No available rooms found. All rooms may be occupied.',
         data: { patient },
       };
     }
+    
+    console.log('✅ [CHECK_IN] Found room:', targetRoom.id, targetRoom.room_number);
 
     // 3. Archive existing chat messages for the room (patient privacy)
     await archiveRoomChatMessages(targetRoom.id);
@@ -108,12 +123,15 @@ export async function checkInPatient(params: {
       .single();
 
     if (assignmentError) {
+      console.error('❌ [CHECK_IN] Failed to create room assignment:', assignmentError);
       return {
         success: false,
         message: `Failed to assign room: ${assignmentError.message}`,
         data: { patient },
       };
     }
+    
+    console.log('✅ [CHECK_IN] Room assignment created:', assignment.id);
 
     // 5. Update room status
     await supabase
@@ -122,7 +140,8 @@ export async function checkInPatient(params: {
       .eq('id', targetRoom.id);
 
     // 6. Create initial vitals record
-    await supabase.from('vitals').insert({
+    console.log('📊 [CHECK_IN] Creating initial vitals...');
+    const { error: vitalsError } = await supabase.from('vitals').insert({
       patient_id: patient.id,
       room_id: targetRoom.id,
       heart_rate: 75,
@@ -132,7 +151,14 @@ export async function checkInPatient(params: {
       respiratory_rate: 16,
       recorded_at: new Date().toISOString(),
     });
+    
+    if (vitalsError) {
+      console.error('⚠️ [CHECK_IN] Failed to create vitals (non-critical):', vitalsError);
+    } else {
+      console.log('✅ [CHECK_IN] Initial vitals created');
+    }
 
+    console.log('🎉 [CHECK_IN] Patient check-in complete!');
     return {
       success: true,
       message: `Successfully checked in ${name} to room ${targetRoom.room_number}`,
@@ -270,10 +296,10 @@ export async function transferPatient(params: {
       supabase.from('rooms').select('*').eq('id', targetRoomId).single(),
     ]);
 
-    if (!targetRoom || targetRoom.status !== 'available') {
+    if (!targetRoom || !['available', 'ready'].includes(targetRoom.status)) {
       return {
         success: false,
-        message: 'Target room is not available',
+        message: `Target room is not available (current status: ${targetRoom?.status || 'not found'})`,
       };
     }
 
