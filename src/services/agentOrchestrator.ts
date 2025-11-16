@@ -26,6 +26,68 @@ const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 /**
+ * Retry fetch with exponential backoff for server errors
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3,
+  baseDelay = 1000
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+
+      // If successful or client error (4xx), return immediately
+      if (response.ok || (response.status >= 400 && response.status < 500)) {
+        return response;
+      }
+
+      // For server errors (5xx), retry
+      if (response.status >= 500) {
+        const errorText = await response.text();
+        lastError = new Error(
+          `OpenRouter API error (${response.status}): ${response.statusText}. ${errorText}`
+        );
+
+        // Don't retry on last attempt
+        if (attempt === maxRetries) {
+          throw lastError;
+        }
+
+        // Calculate delay with exponential backoff
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(
+          `OpenRouter API returned ${response.status}. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      // Network errors
+      if (attempt === maxRetries) {
+        throw error;
+      }
+
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.warn(
+        `Network error. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`,
+        error
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastError || new Error('Max retries exceeded');
+}
+
+/**
  * Safe JSON stringification that handles circular references and errors
  */
 function safeStringify(obj: any, maxDepth = 10): string {
@@ -555,8 +617,8 @@ Current date: ${new Date().toLocaleDateString()}`,
       content: 'Processing your request...',
     });
 
-    // Initial API call
-    let response = await fetch(OPENROUTER_API_URL, {
+    // Initial API call with retry logic
+    let response = await fetchWithRetry(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -675,8 +737,8 @@ Current date: ${new Date().toLocaleDateString()}`,
         });
       }
 
-      // Continue conversation with tool results
-      response = await fetch(OPENROUTER_API_URL, {
+      // Continue conversation with tool results (with retry logic)
+      response = await fetchWithRetry(OPENROUTER_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

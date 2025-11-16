@@ -945,8 +945,23 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
         } catch (agentError) {
           console.error('❌ [AGENT] Error:', agentError);
 
-          // Fallback to basic AI response
-          const errorMessage = `I encountered an error while processing your request. Please try again.`;
+          // Provide helpful error message based on error type
+          let errorMessage = `I encountered an error while processing your request.`;
+
+          if (agentError instanceof Error) {
+            if (agentError.message.includes('500')) {
+              errorMessage = `The AI service is temporarily unavailable (server error). This has been automatically retried. Please try again in a moment.`;
+            } else if (agentError.message.includes('401') || agentError.message.includes('403')) {
+              errorMessage = `Authentication error with the AI service. Please contact support.`;
+            } else if (agentError.message.includes('429')) {
+              errorMessage = `Rate limit reached. Please wait a moment before trying again.`;
+            } else if (agentError.message.includes('timeout') || agentError.message.includes('network')) {
+              errorMessage = `Network connection issue. Please check your internet connection and try again.`;
+            } else {
+              errorMessage = `I encountered an error: ${agentError.message}. Please try again.`;
+            }
+          }
+
           const aiMessageData = await saveMessage('assistant', errorMessage);
           const aiMessage = {
             id: aiMessageData?.id || `temp-ai-${Date.now()}`,
