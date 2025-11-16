@@ -43,10 +43,6 @@ export function PatientVitalsCard({
 }: PatientVitalsCardProps) {
   const severityColor = getSeverityColor(patient.severity);
   const lastCheckedIn = formatLastCheckedIn(vitalData?.recordedAt || null);
-  const dataSourceBadge = vitalData?.dataSource === 'simulated' ? 'DEMO' : 'LIVE';
-  const dataSourceColor = vitalData?.dataSource === 'simulated'
-    ? 'bg-text-gray/20 text-text-gray border-text-gray/30'
-    : 'bg-accent-green/20 text-accent-green border-accent-green/30';
 
   return (
     <AccordionItem value={patient.id} className="border-b border-text-gray/10">
@@ -104,14 +100,9 @@ export function PatientVitalsCard({
 
           {/* Right side - Vitals */}
           <div className="flex-1 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-text-gray uppercase tracking-wide">Last checked in</p>
-                <p className="text-xs text-text-dark">{lastCheckedIn}</p>
-              </div>
-              <Badge variant="outline" className={`text-xs px-2 py-0.5 ${dataSourceColor}`}>
-                {dataSourceBadge}
-              </Badge>
+            <div>
+              <p className="text-xs text-text-gray uppercase tracking-wide">Last checked in</p>
+              <p className="text-xs text-text-dark">{lastCheckedIn}</p>
             </div>
 
             <div>
