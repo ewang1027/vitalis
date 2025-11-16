@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@/lib/supabase'
 import { transformTasks, transformEquipmentList } from '@/lib/dataTransformers'
@@ -506,102 +506,103 @@ export function usePatientsDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  useEffect(() => {
-    async function fetchPatientsDashboard() {
-      try {
-        // Fetch all active patients
-        const { data: patients, error: patientsError } = await supabase
-          .from('patients')
-          .select('*')
-          .eq('is_active', true)
-          .order('admission_date', { ascending: false })
+  const fetchPatientsDashboard = useCallback(async () => {
+    try {
+      setLoading(true)
+      // Fetch all active patients
+      const { data: patients, error: patientsError } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('is_active', true)
+        .order('admission_date', { ascending: false })
 
-        if (patientsError) throw patientsError
+      if (patientsError) throw patientsError
 
-        if (!patients || patients.length === 0) {
-          setPatientsData([])
-          setLoading(false)
-          return
-        }
-
-        // Fetch all active room assignments
-        const { data: assignments, error: assignmentsError } = await supabase
-          .from('room_assignments')
-          .select('*')
-          .eq('is_active', true)
-
-        if (assignmentsError) throw assignmentsError
-
-        // Create a map of patient_id to assignment
-        const assignmentMap = new Map(
-          assignments?.map(a => [a.patient_id, a]) || []
-        )
-
-        // Fetch all rooms
-        const { data: rooms, error: roomsError } = await supabase
-          .from('rooms')
-          .select('*')
-
-        if (roomsError) throw roomsError
-
-        const roomMap = new Map(rooms?.map(r => [r.id, r]) || [])
-
-        // Fetch all staff (for doctor names)
-        const { data: staff, error: staffError } = await supabase
-          .from('staff')
-          .select('*')
-
-        if (staffError) throw staffError
-
-        const staffMap = new Map(staff?.map(s => [s.id, s]) || [])
-
-        // Fetch latest vitals for all patients
-        const patientIds = patients.map(p => p.id)
-        const { data: allVitals, error: vitalsError } = await supabase
-          .from('vitals')
-          .select('*')
-          .in('patient_id', patientIds)
-          .order('recorded_at', { ascending: false })
-
-        if (vitalsError) throw vitalsError
-
-        // Create map of patient_id to latest vital
-        const latestVitalsMap = new Map<string, Vital>()
-        allVitals?.forEach(vital => {
-          if (!latestVitalsMap.has(vital.patient_id)) {
-            latestVitalsMap.set(vital.patient_id, vital)
-          }
-        })
-
-        // Combine all data
-        const dashboardData: PatientDashboardData[] = patients.map(patient => {
-          const assignment = assignmentMap.get(patient.id)
-          const room = assignment ? roomMap.get(assignment.room_id) : null
-          const doctor = assignment?.assigned_doctor_id
-            ? staffMap.get(assignment.assigned_doctor_id)
-            : null
-          const latestVitals = latestVitalsMap.get(patient.id) || null
-
-          return {
-            patient,
-            roomNumber: room?.room_number || null,
-            doctorName: doctor?.name || null,
-            latestVitals,
-            lastCheckedIn: latestVitals?.recorded_at || null,
-          }
-        })
-
-        setPatientsData(dashboardData)
-      } catch (err) {
-        setError(err as Error)
-        console.error('Error fetching patients dashboard data:', err)
-      } finally {
+      if (!patients || patients.length === 0) {
+        setPatientsData([])
         setLoading(false)
+        return
       }
-    }
 
-    fetchPatientsDashboard()
+      // Fetch all active room assignments
+      const { data: assignments, error: assignmentsError } = await supabase
+        .from('room_assignments')
+        .select('*')
+        .eq('is_active', true)
+
+      if (assignmentsError) throw assignmentsError
+
+      // Create a map of patient_id to assignment
+      const assignmentMap = new Map(
+        assignments?.map(a => [a.patient_id, a]) || []
+      )
+
+      // Fetch all rooms
+      const { data: rooms, error: roomsError } = await supabase
+        .from('rooms')
+        .select('*')
+
+      if (roomsError) throw roomsError
+
+      const roomMap = new Map(rooms?.map(r => [r.id, r]) || [])
+
+      // Fetch all staff (for doctor names)
+      const { data: staff, error: staffError } = await supabase
+        .from('staff')
+        .select('*')
+
+      if (staffError) throw staffError
+
+      const staffMap = new Map(staff?.map(s => [s.id, s]) || [])
+
+      // Fetch latest vitals for all patients
+      const patientIds = patients.map(p => p.id)
+      const { data: allVitals, error: vitalsError } = await supabase
+        .from('vitals')
+        .select('*')
+        .in('patient_id', patientIds)
+        .order('recorded_at', { ascending: false })
+
+      if (vitalsError) throw vitalsError
+
+      // Create map of patient_id to latest vital
+      const latestVitalsMap = new Map<string, Vital>()
+      allVitals?.forEach(vital => {
+        if (!latestVitalsMap.has(vital.patient_id)) {
+          latestVitalsMap.set(vital.patient_id, vital)
+        }
+      })
+
+      // Combine all data
+      const dashboardData: PatientDashboardData[] = patients.map(patient => {
+        const assignment = assignmentMap.get(patient.id)
+        const room = assignment ? roomMap.get(assignment.room_id) : null
+        const doctor = assignment?.assigned_doctor_id
+          ? staffMap.get(assignment.assigned_doctor_id)
+          : null
+        const latestVitals = latestVitalsMap.get(patient.id) || null
+
+        return {
+          patient,
+          roomNumber: room?.room_number || null,
+          doctorName: doctor?.name || null,
+          latestVitals,
+          lastCheckedIn: latestVitals?.recorded_at || null,
+        }
+      })
+
+      setPatientsData(dashboardData)
+    } catch (err) {
+      setError(err as Error)
+      console.error('Error fetching patients dashboard data:', err)
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  return { patientsData, loading, error }
+  useEffect(() => {
+    fetchPatientsDashboard()
+  }, [fetchPatientsDashboard])
+
+  return { patientsData, loading, error, refetch: fetchPatientsDashboard }
 }

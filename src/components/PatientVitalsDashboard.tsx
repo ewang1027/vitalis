@@ -3,8 +3,10 @@ import { Accordion } from '@/components/ui/accordion';
 import { PatientVitalsCard } from '@/components/PatientVitalsCard';
 import { usePatientsDashboard } from '@/hooks/useSupabaseData';
 import { useRealtimeVitals } from '@/hooks/useRealtimeVitals';
-import { Loader2, Users, Filter, ArrowUpDown } from 'lucide-react';
+import { Loader2, Users, Filter, ArrowUpDown, UserPlus } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { AddPatientDialog } from '@/components/AddPatientDialog';
 
 function getSeverityPriority(severity?: string | null): number {
   if (!severity) return 3;
@@ -16,9 +18,10 @@ function getSeverityPriority(severity?: string | null): number {
 }
 
 export function PatientVitalsDashboard() {
-  const { patientsData, loading: patientsLoading, error: patientsError } = usePatientsDashboard();
+  const { patientsData, loading: patientsLoading, error: patientsError, refetch } = usePatientsDashboard();
   const [filterBySeverity, setFilterBySeverity] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('severity');
+  const [addPatientOpen, setAddPatientOpen] = useState(false);
 
   console.log('PatientVitalsDashboard:', {
     patientsCount: patientsData.length,
@@ -100,11 +103,21 @@ export function PatientVitalsDashboard() {
 
   if (patientsData.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full p-4">
+      <div className="flex flex-col items-center justify-center h-full p-4 gap-4">
         <div className="text-center">
           <Users className="h-8 w-8 text-text-gray mx-auto mb-2" />
-          <p className="text-sm text-text-gray">No active patients</p>
+          <p className="text-sm text-text-gray mb-1">No active patients</p>
+          <p className="text-xs text-text-gray">Add a patient to get started</p>
         </div>
+        <Button onClick={() => setAddPatientOpen(true)} className="gap-2">
+          <UserPlus className="h-4 w-4" />
+          Add Patient
+        </Button>
+        <AddPatientDialog
+          open={addPatientOpen}
+          onOpenChange={setAddPatientOpen}
+          onPatientAdded={refetch}
+        />
       </div>
     );
   }
@@ -173,12 +186,24 @@ export function PatientVitalsDashboard() {
         </Accordion>
       </div>
 
-      {/* Footer with helpful info */}
-      <div className="px-4 py-2 border-t border-text-gray/10 bg-bg-tertiary/30">
-        <p className="text-xs text-text-gray text-center">
-          Vitals update every 3 seconds • Click patient to expand details
-        </p>
+      {/* Footer with Add Patient Button */}
+      <div className="px-4 py-3 border-t border-text-gray/10 bg-bg-tertiary/30">
+        <Button 
+          onClick={() => setAddPatientOpen(true)}
+          className="w-full gap-2 bg-accent-green hover:bg-accent-green/90"
+          size="sm"
+        >
+          <UserPlus className="h-4 w-4" />
+          Add New Patient
+        </Button>
       </div>
+
+      {/* Add Patient Dialog */}
+      <AddPatientDialog
+        open={addPatientOpen}
+        onOpenChange={setAddPatientOpen}
+        onPatientAdded={refetch}
+      />
     </div>
   );
 }
