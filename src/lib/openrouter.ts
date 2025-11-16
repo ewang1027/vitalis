@@ -166,9 +166,17 @@ Available task types:
 5. **Equipment transfer** (NO name needed):
    "Move equipment from 201 to 105" → "Transferring equipment. [EXECUTE_TASK: equipment_transfer from room-201 to room-105]"
 
-6. **Patient discharge/checkout** (NO name needed):
-   "Discharge patient from 102" → "Discharging patient from Room 102. [EXECUTE_TASK: patient_discharge from room-102]"
-   If currently viewing a room with a patient: "Discharge this patient" → Execute immediately
+6. **Patient discharge/checkout** (two-step if room not specified):
+   If user provides room immediately:
+   - User: "Discharge patient from room 102" → "Discharging patient from Room 102. [EXECUTE_TASK: patient_discharge from room-102]"
+   - User: "Check out patient from 103" → "Discharging patient from Room 103. [EXECUTE_TASK: patient_discharge from room-103]"
+   
+   If user doesn't provide room (two-step process):
+   - User: "Check out patient" → Ask: "Which room should the patient be discharged from?"
+   - User: "room 103" or "103" → "Discharging patient from Room 103. [EXECUTE_TASK: patient_discharge from room-103]"
+   
+   If currently viewing a room with a patient:
+   - User: "Discharge this patient" → Execute immediately with current room
 
 7. **Linen/Medication/Maintenance** (NO name needed):
    Execute immediately with room number

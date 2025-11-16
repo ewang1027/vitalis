@@ -39,75 +39,75 @@ export function ChatInterface({ initialMessages, userId, roomId, contextData, on
   const roomName = currentRoom?.room_name || currentRoom?.room_number || roomId;
 
   // Fetch detailed room information when room is selected
-  useEffect(() => {
-    async function fetchRoomDetails() {
-      if (!roomId) {
-        setRoomDetails(null);
-        return;
-      }
+  const fetchRoomDetailsData = useCallback(async () => {
+    if (!roomId) {
+      setRoomDetails(null);
+      return;
+    }
 
-      try {
-        // Fetch active room assignment
-        const { data: assignment, error: assignmentError } = await supabase
-          .from('room_assignments')
+    try {
+      // Fetch active room assignment
+      const { data: assignment, error: assignmentError } = await supabase
+        .from('room_assignments')
+        .select('*')
+        .eq('room_id', roomId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (assignmentError) throw assignmentError;
+
+      let patient = null;
+      let vitals = null;
+
+      if (assignment) {
+        // Fetch patient details
+        const { data: patientData, error: patientError } = await supabase
+          .from('patients')
           .select('*')
-          .eq('room_id', roomId)
-          .eq('is_active', true)
+          .eq('id', assignment.patient_id)
+          .single();
+
+        if (!patientError) patient = patientData;
+
+        // Fetch latest vitals
+        const { data: vitalsData, error: vitalsError } = await supabase
+          .from('vitals')
+          .select('*')
+          .eq('patient_id', assignment.patient_id)
+          .order('recorded_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        if (assignmentError) throw assignmentError;
-
-        let patient = null;
-        let vitals = null;
-
-        if (assignment) {
-          // Fetch patient details
-          const { data: patientData, error: patientError } = await supabase
-            .from('patients')
-            .select('*')
-            .eq('id', assignment.patient_id)
-            .single();
-
-          if (!patientError) patient = patientData;
-
-          // Fetch latest vitals
-          const { data: vitalsData, error: vitalsError } = await supabase
-            .from('vitals')
-            .select('*')
-            .eq('patient_id', assignment.patient_id)
-            .order('recorded_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (!vitalsError) vitals = vitalsData;
-        }
-
-        // Fetch equipment in this room
-        const { data: equipment, error: equipmentError } = await supabase
-          .from('equipment')
-          .select('*')
-          .eq('current_room_id', roomId);
-
-        if (equipmentError) throw equipmentError;
-
-        setRoomDetails({
-          room: currentRoom,
-          assignment,
-          patient,
-          vitals,
-          equipment: equipment || []
-        });
-
-        console.log('📋 Room details loaded:', { patient, vitals, equipment });
-      } catch (error) {
-        console.error('Error fetching room details:', error);
-        setRoomDetails(null);
+        if (!vitalsError) vitals = vitalsData;
       }
-    }
 
-    fetchRoomDetails();
+      // Fetch equipment in this room
+      const { data: equipment, error: equipmentError } = await supabase
+        .from('equipment')
+        .select('*')
+        .eq('current_room_id', roomId);
+
+      if (equipmentError) throw equipmentError;
+
+      setRoomDetails({
+        room: currentRoom,
+        assignment,
+        patient,
+        vitals,
+        equipment: equipment || []
+      });
+
+      console.log('📋 Room details loaded:', { patient, vitals, equipment });
+    } catch (error) {
+      console.error('Error fetching room details:', error);
+      setRoomDetails(null);
+    }
   }, [roomId, currentRoom]);
+
+  useEffect(() => {
+    fetchRoomDetailsData();
+  }, [fetchRoomDetailsData]);
 
   // Generate AI-powered quick prompts based on current room
   const generateQuickPrompts = useCallback(async () => {
@@ -308,18 +308,25 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
         // Continue even if patient update fails
       }
 
-      // Update room status to ready
-      const { error: updateRoomError } = await supabase
+      // Update room status to cleaning (patient has left, room needs cleaning before next admission)
+      console.log(`🧹 [DISCHARGE] Updating room ${roomId} status to 'cleaning'...`);
+      const { data: roomUpdate, error: updateRoomError } = await supabase
         .from('rooms')
-        .update({ status: 'ready' })
-        .eq('id', roomId);
+        .update({ 
+          status: 'cleaning',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', roomId)
+        .select();
 
       if (updateRoomError) {
-        console.error('Error updating room status:', updateRoomError);
+        console.error('❌ [DISCHARGE] Error updating room status:', updateRoomError);
         // Continue even if room update fails
+      } else {
+        console.log(`✅ [DISCHARGE] Room status updated successfully:`, roomUpdate);
       }
 
-      console.log(`✅ Patient ${patient?.name} discharged from ${roomId}`);
+      console.log(`✅ [DISCHARGE] Patient ${patient?.name} discharged from ${roomId}`);
       return patient;
     } catch (error) {
       console.error('Error discharging patient:', error);
@@ -732,7 +739,12 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
               
               // Refresh room details if we're viewing this room
               if (roomId === finalTargetRoomId) {
+                console.log('🔄 [REFRESH] Refreshing room details for current room...');
                 setRoomDetails(null);
+                // Refetch room details after a short delay to ensure DB updates have propagated
+                setTimeout(() => {
+                  fetchRoomDetailsData();
+                }, 500);
               }
             }
           } catch (error) {
@@ -844,7 +856,8 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
 
         // Check if AI response contains a task execution command
         console.log('🔍 [TASK_DETECT] Searching for [EXECUTE_TASK: ...] command in response...');
-        const taskCommandMatch = aiResponse.match(/\[EXECUTE_TASK:\s*(\w+)\s+(?:from\s+room-(\d+|AVAILABLE)\s+)?to\s+room-(\d+|AVAILABLE)\]/i);
+        // Updated regex to support: "from room-X", "to room-Y", or "from room-X to room-Y"
+        const taskCommandMatch = aiResponse.match(/\[EXECUTE_TASK:\s*(\w+)\s+(?:from\s+room-(\d+|AVAILABLE)(?:\s+to\s+room-(\d+|AVAILABLE))?|to\s+room-(\d+|AVAILABLE))\]/i);
         console.log('🔍 [TASK_DETECT] Regex match result:', taskCommandMatch);
         
         if (!taskCommandMatch) {
@@ -859,7 +872,9 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
         }
 
         if (taskCommandMatch) {
-          const [fullMatch, taskType, sourceRoom, targetRoom] = taskCommandMatch;
+          const [fullMatch, taskType, sourceRoom, targetRoomFromTransfer, targetRoomFromDirect] = taskCommandMatch;
+          // Target room can be from "from X to Y" pattern (group 3) or "to Y" pattern (group 4)
+          const targetRoom = targetRoomFromTransfer || targetRoomFromDirect || sourceRoom;
 
           console.log('✅ Task command detected:', { taskType, sourceRoom, targetRoom });
 
@@ -952,7 +967,12 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
                     
                     // Refresh room details if we're viewing this room
                     if (roomId === finalRoomId) {
+                      console.log('🔄 [REFRESH] Refreshing room details for current room...');
                       setRoomDetails(null);
+                      // Refetch room details after a short delay to ensure DB updates have propagated
+                      setTimeout(() => {
+                        fetchRoomDetailsData();
+                      }, 500);
                     }
                   }
                 } catch (error) {
@@ -1207,9 +1227,18 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
                       console.log(`✅ ${patient.name} discharged from ${roomDisplay}`);
                       toast.success(`✅ ${patient.name} discharged from ${roomDisplay}`);
                       
+                      // Trigger data refresh in parent to update UI
+                      console.log('🔄 [REFRESH] Triggering parent data refresh...');
+                      onDataUpdate?.();
+                      
                       // Refresh room details if we're viewing this room
                       if (roomId === finalTargetRoomId) {
+                        console.log('🔄 [REFRESH] Refreshing room details for current room...');
                         setRoomDetails(null);
+                        // Refetch room details after a short delay to ensure DB updates have propagated
+                        setTimeout(() => {
+                          fetchRoomDetailsData();
+                        }, 500);
                       }
                     }
                   } catch (error) {
