@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Accordion } from '@/components/ui/accordion';
 import { PatientVitalsCard } from '@/components/PatientVitalsCard';
-import { usePatientsDashboard } from '@/hooks/useSupabaseData';
+import { usePatientsDashboard, useRooms } from '@/hooks/useSupabaseData';
 import { useRealtimeVitals } from '@/hooks/useRealtimeVitals';
 import { Loader2, Users, Filter, ArrowUpDown, UserPlus } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,6 +19,7 @@ function getSeverityPriority(severity?: string | null): number {
 
 export function PatientVitalsDashboard() {
   const { patientsData, loading: patientsLoading, error: patientsError, refetch } = usePatientsDashboard();
+  const { rooms, loading: roomsLoading } = useRooms();
   const [filterBySeverity, setFilterBySeverity] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('severity');
   const [addPatientOpen, setAddPatientOpen] = useState(false);
@@ -89,7 +90,7 @@ export function PatientVitalsDashboard() {
     enableSimulation: true,
   });
 
-  if (patientsLoading || vitalsLoading) {
+  if (patientsLoading || vitalsLoading || roomsLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="flex flex-col items-center gap-2">
@@ -140,7 +141,7 @@ export function PatientVitalsDashboard() {
           <h2 className="text-lg font-bold text-text-dark">Patient Dashboard</h2>
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-text-gray" />
-            <span className="text-sm text-text-gray">{sortedPatientsData.length}/{patientsData.length}</span>
+            <span className="text-sm text-text-gray">{sortedPatientsData.length}/{rooms.length}</span>
           </div>
         </div>
 
