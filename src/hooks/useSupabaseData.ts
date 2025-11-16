@@ -124,17 +124,26 @@ export function useRooms() {
   useEffect(() => {
     async function fetchRooms() {
       try {
+        console.log('🔄 [ROOMS] Fetching rooms data... (refreshKey:', refreshKey, ')');
         const { data, error } = await supabase
           .from('rooms')
           .select('*')
           .order('room_number', { ascending: true })
 
         if (error) throw error
-        console.log('🔄 Rooms fetched:', data?.length || 0, 'rooms')
+        console.log('✅ [ROOMS] Rooms fetched:', data?.length || 0, 'rooms');
+        
+        // Log room statuses for debugging
+        const statusCounts = data?.reduce((acc, room) => {
+          acc[room.status] = (acc[room.status] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        console.log('📊 [ROOMS] Status breakdown:', statusCounts);
+        
         setRooms(data || [])
       } catch (err) {
         setError(err as Error)
-        console.error('Error fetching rooms:', err)
+        console.error('❌ [ROOMS] Error fetching rooms:', err)
       } finally {
         setLoading(false)
       }
