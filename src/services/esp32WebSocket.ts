@@ -7,7 +7,7 @@ export interface ESP32HardwareData {
   light?: number;
   motion?: boolean;
   batteryLevel?: number;
-  customSensors?: Record<string, any>;
+  customSensors?: Record<string, unknown>;
 }
 
 export interface WebSocketMessage {

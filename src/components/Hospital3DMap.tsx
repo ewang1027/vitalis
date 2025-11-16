@@ -1,6 +1,6 @@
 import React, { useRef, useState, Suspense } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text, Html } from '@react-three/drei';
+import { OrbitControls, Text, Html, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Database } from '@/lib/supabase';
 import type { Asset } from '@/types/wardops';
@@ -40,17 +40,10 @@ roomData?: Room;
 onEnterRoom?: (roomId: string) => void;
 onClosePopup?: () => void;
 }) {
-const meshRef = useRef<THREE.Mesh>(null);
+const groupRef = useRef<THREE.Group>(null);
 const [hovered, setHovered] = useState(false);
 
-useFrame(() => {
-if (meshRef.current) {
-const targetY = isSelected ? 0.3 : hovered ? 0.15 : 0.1;
-meshRef.current.position.y += (targetY - meshRef.current.position.y) * 0.1;
-}
-});
-
-const getColor = () => {
+const getStatusColor = () => {
 switch (status) {
 case 'ready': return '#10b981';
 case 'needs-attention': return '#ef4444';
@@ -59,61 +52,205 @@ default: return '#6b7280';
 }
 };
 
-return (
-<group position={position}>
-{/* Floor */}
-<mesh position={[0, 0, 0]} receiveShadow>
-<boxGeometry args={[size[0], 0.05, size[2]]} />
-<meshStandardMaterial color="#f5f5f5" />
-</mesh>
+const wallHeight = size[1];
+const wallThickness = 0.15;
+const doorWidth = 1.2;
 
-{/* Walls */}
-<mesh
-ref={meshRef}
-position={[0, size[1] / 2, 0]}
-onClick={(e) => {
+const handleInteraction = (e: any) => {
 e.stopPropagation();
 onClick();
-}}
-onPointerOver={(e) => {
+};
+
+const handlePointerOver = (e: any) => {
 e.stopPropagation();
 setHovered(true);
 if (document.body.style) {
 document.body.style.cursor = 'pointer';
 }
-}}
-onPointerOut={() => {
+};
+
+const handlePointerOut = () => {
 setHovered(false);
 if (document.body.style) {
 document.body.style.cursor = 'auto';
 }
-}}
-castShadow
->
-<boxGeometry args={[size[0] - 0.1, size[1], size[2] - 0.1]} />
-<meshStandardMaterial
-color={getColor()}
-transparent
-opacity={isSelected ? 0.9 : hovered ? 0.7 : 0.5}
-emissive={getColor()}
-emissiveIntensity={isSelected ? 0.3 : hovered ? 0.2 : 0.1}
+};
+
+return (
+<group ref={groupRef} position={position}>
+{/* Floor */}
+<mesh position={[0, 0.02, 0]} receiveShadow>
+<boxGeometry args={[size[0], 0.04, size[2]]} />
+<meshStandardMaterial 
+color="#ffffff" 
+roughness={0.8}
+metalness={0.1}
 />
 </mesh>
 
-{/* Room Label */}
-<Text
-position={[0, size[1] + 0.3, 0]}
-fontSize={0.3}
-color={isSelected ? getColor() : '#374151'}
-anchorX="center"
-anchorY="middle"
+{/* Back Wall (North) */}
+<mesh 
+position={[0, wallHeight / 2, -size[2] / 2 + wallThickness / 2]} 
+castShadow 
+receiveShadow
+onClick={handleInteraction}
+onPointerOver={handlePointerOver}
+onPointerOut={handlePointerOut}
 >
-{label}
-</Text>
+<boxGeometry args={[size[0], wallHeight, wallThickness]} />
+<meshStandardMaterial 
+color="#e8f0f2" 
+roughness={0.9}
+metalness={0.05}
+emissive={isSelected ? getStatusColor() : '#000000'}
+emissiveIntensity={isSelected ? 0.15 : 0}
+/>
+</mesh>
+
+{/* Left Wall (West) */}
+<mesh 
+position={[-size[0] / 2 + wallThickness / 2, wallHeight / 2, 0]} 
+castShadow 
+receiveShadow
+onClick={handleInteraction}
+onPointerOver={handlePointerOver}
+onPointerOut={handlePointerOut}
+>
+<boxGeometry args={[wallThickness, wallHeight, size[2]]} />
+<meshStandardMaterial 
+color="#e8f0f2" 
+roughness={0.9}
+metalness={0.05}
+emissive={isSelected ? getStatusColor() : '#000000'}
+emissiveIntensity={isSelected ? 0.15 : 0}
+/>
+</mesh>
+
+{/* Right Wall (East) */}
+<mesh 
+position={[size[0] / 2 - wallThickness / 2, wallHeight / 2, 0]} 
+castShadow 
+receiveShadow
+onClick={handleInteraction}
+onPointerOver={handlePointerOver}
+onPointerOut={handlePointerOut}
+>
+<boxGeometry args={[wallThickness, wallHeight, size[2]]} />
+<meshStandardMaterial 
+color="#e8f0f2" 
+roughness={0.9}
+metalness={0.05}
+emissive={isSelected ? getStatusColor() : '#000000'}
+emissiveIntensity={isSelected ? 0.15 : 0}
+/>
+</mesh>
+
+{/* Front Wall (South) - Split for door opening */}
+{/* Left part of front wall */}
+<mesh 
+position={[-size[0] / 2 + (size[0] - doorWidth) / 4, wallHeight / 2, size[2] / 2 - wallThickness / 2]} 
+castShadow 
+receiveShadow
+onClick={handleInteraction}
+onPointerOver={handlePointerOver}
+onPointerOut={handlePointerOut}
+>
+<boxGeometry args={[(size[0] - doorWidth) / 2, wallHeight, wallThickness]} />
+<meshStandardMaterial 
+color="#e8f0f2" 
+roughness={0.9}
+metalness={0.05}
+emissive={isSelected ? getStatusColor() : '#000000'}
+emissiveIntensity={isSelected ? 0.15 : 0}
+/>
+</mesh>
+
+{/* Right part of front wall */}
+<mesh 
+position={[size[0] / 2 - (size[0] - doorWidth) / 4, wallHeight / 2, size[2] / 2 - wallThickness / 2]} 
+castShadow 
+receiveShadow
+onClick={handleInteraction}
+onPointerOver={handlePointerOver}
+onPointerOut={handlePointerOut}
+>
+<boxGeometry args={[(size[0] - doorWidth) / 2, wallHeight, wallThickness]} />
+<meshStandardMaterial 
+color="#e8f0f2" 
+roughness={0.9}
+metalness={0.05}
+emissive={isSelected ? getStatusColor() : '#000000'}
+emissiveIntensity={isSelected ? 0.15 : 0}
+/>
+</mesh>
+
+{/* Door frame */}
+<mesh 
+position={[0, 0, size[2] / 2 - wallThickness / 2]} 
+castShadow
+onClick={handleInteraction}
+onPointerOver={handlePointerOver}
+onPointerOut={handlePointerOut}
+>
+<boxGeometry args={[doorWidth + 0.1, wallHeight * 0.85, wallThickness * 0.5]} />
+<meshStandardMaterial 
+color="#8b9aab" 
+roughness={0.4}
+metalness={0.6}
+/>
+</mesh>
+
+{/* Status indicator light above door */}
+<mesh position={[0, wallHeight * 0.9, size[2] / 2 - 0.05]} castShadow>
+<boxGeometry args={[0.6, 0.15, 0.05]} />
+<meshStandardMaterial 
+color={getStatusColor()} 
+emissive={getStatusColor()}
+emissiveIntensity={hovered ? 0.8 : 0.6}
+roughness={0.3}
+metalness={0.7}
+/>
+</mesh>
+
+{/* Interior furniture - Simple bed representation */}
+<group position={[-size[0] / 4, 0.3, -size[2] / 4]}>
+<mesh castShadow>
+<boxGeometry args={[1.2, 0.3, 2]} />
+<meshStandardMaterial color="#c9d6df" roughness={0.8} />
+</mesh>
+<mesh position={[0, 0.4, -0.7]} castShadow>
+<boxGeometry args={[1.2, 0.5, 0.6]} />
+<meshStandardMaterial color="#8b9aab" roughness={0.6} />
+</mesh>
+</group>
+
+{/* Small side table */}
+<mesh position={[size[0] / 4, 0.35, -size[2] / 4]} castShadow>
+<boxGeometry args={[0.5, 0.7, 0.5]} />
+<meshStandardMaterial color="#d4d4d4" roughness={0.7} />
+</mesh>
+
+	{/* Room Label */}
+	<Billboard
+		follow={true}
+		lockX={false}
+		lockY={false}
+		lockZ={false}
+		position={[0, wallHeight + 0.4, 0]}
+	>
+		<Text
+			fontSize={0.3}
+			color={isSelected ? getStatusColor() : '#374151'}
+			anchorX="center"
+			anchorY="middle"
+		>
+			{label}
+		</Text>
+	</Billboard>
 
 {/* Room Info Popup */}
 {isSelected && (
-<Html position={[0, size[1] + 0.8, 0]} center>
+<Html position={[0, wallHeight + 0.9, 0]} center>
 <div style={{
 background: 'white',
 borderRadius: '8px',
@@ -121,7 +258,7 @@ boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
 padding: '12px',
 minWidth: '220px',
 maxWidth: '280px',
-border: `2px solid ${getColor()}`,
+border: `2px solid ${getStatusColor()}`,
 position: 'relative'
 }}>
 {/* Close Button */}

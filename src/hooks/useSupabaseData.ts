@@ -331,7 +331,7 @@ export function useVitals(patientId?: string) {
 
 // Hook for fetching room assignments with related data
 export function useRoomAssignments() {
-  const [assignments, setAssignments] = useState<any[]>([])
+  const [assignments, setAssignments] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
@@ -395,7 +395,7 @@ export function useAlerts(roomId?: string) {
 
 // Hook for fetching complete room details with all related data
 export function useRoomDetails(roomId: string) {
-  const [roomDetails, setRoomDetails] = useState<any>(null)
+  const [roomDetails, setRoomDetails] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 

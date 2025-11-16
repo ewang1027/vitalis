@@ -12,25 +12,25 @@ import { TASK_CONFIGS, VisualTaskType } from '@/types/visualTasks';
 import { detectTaskFromConversation } from '@/services/conversationTaskDetector';
 
 interface ChatInterfaceProps {
-  initialMessages: any[];
+  initialMessages: ChatMessage[];
   userId?: string;
   roomId?: string | null;
   contextData?: {
-    rooms?: any[];
-    equipment?: any[];
-    tasks?: any[];
-    patients?: any[];
+    rooms?: Record<string, unknown>[];
+    equipment?: Record<string, unknown>[];
+    tasks?: Record<string, unknown>[];
+    patients?: Record<string, unknown>[];
   };
   onDataUpdate?: () => void; // Callback to refresh parent data
 }
 
 export function ChatInterface({ initialMessages, userId, roomId, contextData, onDataUpdate }: ChatInterfaceProps) {
-  const [messages, setMessages] = useState<any[]>(initialMessages || []);
+  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages || []);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [quickPrompts, setQuickPrompts] = useState<string[]>([]);
   const [isGeneratingPrompts, setIsGeneratingPrompts] = useState(false);
-  const [roomDetails, setRoomDetails] = useState<any>(null);
+  const [roomDetails, setRoomDetails] = useState<Record<string, unknown> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { createTask } = useTaskSubscription();
 
@@ -1355,23 +1355,25 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
         }
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error sending message:', error);
-      console.error('Error details:', {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorDetails = error instanceof Error ? {
         message: error.message,
         stack: error.stack,
         name: error.name
-      });
-      toast.error(error.message || 'Failed to process message');
+      } : { error };
+      console.error('Error details:', errorDetails);
+      toast.error(errorMessage || 'Failed to process message');
 
       // Add error message to UI with more details for debugging
-      const errorMessage = {
+      const errorMsg = {
         id: `error-${Date.now()}`,
         role: 'assistant',
-        content: `Sorry, I encountered an error processing your request: ${error.message || 'Unknown error'}. Please try again.`,
+        content: `Sorry, I encountered an error processing your request: ${errorMessage}. Please try again.`,
         created_at: new Date().toISOString()
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => [...prev, errorMsg as ChatMessage]);
     } finally {
       setIsLoading(false);
     }

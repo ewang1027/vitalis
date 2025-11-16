@@ -85,17 +85,17 @@ export async function sendChatMessage(
  */
 export function createSystemPrompt(
   contextData?: {
-    rooms?: any[];
-    equipment?: any[];
-    tasks?: any[];
-    patients?: any[];
+    rooms?: Record<string, unknown>[];
+    equipment?: Record<string, unknown>[];
+    tasks?: Record<string, unknown>[];
+    patients?: Record<string, unknown>[];
   },
   currentRoomDetails?: {
-    room?: any;
-    patient?: any;
-    vitals?: any;
-    equipment?: any[];
-    assignment?: any;
+    room?: Record<string, unknown>;
+    patient?: Record<string, unknown>;
+    vitals?: Record<string, unknown>;
+    equipment?: Record<string, unknown>[];
+    assignment?: Record<string, unknown>;
   }
 ): ChatMessage {
   let prompt = `You are Vitalis, an AI assistant for hospital ward operations. You help healthcare staff manage:
@@ -235,7 +235,7 @@ Example: "Checking in John. [EXECUTE_TASK: patient_onboarding to room-AVAILABLE]
 
     if (currentRoomDetails.equipment && currentRoomDetails.equipment.length > 0) {
       prompt += `\n\n🏥 EQUIPMENT IN THIS ROOM:`;
-      currentRoomDetails.equipment.forEach((eq: any) => {
+      currentRoomDetails.equipment.forEach((eq: Record<string, unknown>) => {
         prompt += `\n- ${eq.name} (${eq.equipment_type}, ${eq.state})`;
       });
     } else {

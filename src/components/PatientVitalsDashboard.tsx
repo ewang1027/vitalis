@@ -53,10 +53,11 @@ export function PatientVitalsDashboard() {
     // Then, sort by selected criteria
     return filtered.sort((a, b) => {
       switch (sortBy) {
-        case 'severity':
+        case 'severity': {
           const priorityA = getSeverityPriority(a.patient.severity);
           const priorityB = getSeverityPriority(b.patient.severity);
           return priorityA - priorityB;
+        }
         
         case 'name':
           return a.patient.name.localeCompare(b.patient.name);
