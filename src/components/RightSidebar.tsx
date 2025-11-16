@@ -47,10 +47,10 @@ export function RightSidebar({
 }: RightSidebarProps) {
   const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false);
 
-  // Sync with parent's collapsed state if controlled
+  // Only sync initial collapsed state from parent
   useEffect(() => {
     setIsManuallyCollapsed(isCollapsed);
-  }, [isCollapsed]);
+  }, []); // Empty dependency - only run once on mount
 
   const handleCollapse = (collapsed: boolean) => {
     setIsManuallyCollapsed(collapsed);
@@ -61,36 +61,21 @@ export function RightSidebar({
     r => r.roomId === selectedRoomId
   ) || null;
 
-  // Show collapsed state when manually collapsed
+  // Show collapsed state when manually collapsed - always show patient status bar
   if (isManuallyCollapsed) {
-    // For dashboard tab, show patient status bar
-    if (activeTab === 'dashboard') {
-      return <PatientStatusBar onExpand={() => handleCollapse(false)} />;
-    }
-
-    // For other tabs, show simple expand button
     return (
-      <div className="w-12 h-full border-l border-border bg-bg-secondary flex items-center justify-center p-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => handleCollapse(false)}
-          className="text-text-tertiary hover:text-text-primary h-8 w-8 p-0"
-          title="Expand sidebar"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
+      <div className="transition-all duration-300 ease-in-out">
+        <PatientStatusBar onExpand={() => handleCollapse(false)} />
       </div>
     );
   }
 
   // Always show dashboard
   return (
-    <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col min-w-0">
+    <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col min-w-0 transition-all duration-300 ease-in-out animate-in slide-in-from-right">
       {/* Collapse Button */}
       <div className="border-b border-border p-3 flex items-center justify-between min-w-0">
         <h3 className="text-sm font-bold text-text-primary truncate min-w-0 flex items-center gap-2">
-          <LayoutDashboard className="h-4 w-4" />
           Patient Dashboard
         </h3>
         <Button
@@ -100,7 +85,7 @@ export function RightSidebar({
           className="text-text-tertiary hover:text-text-primary flex-shrink-0"
           title="Collapse sidebar"
         >
-          <LayoutDashboard className="h-4 w-4" />
+          <LayoutDashboard className="h-4 w-4 animate-pulse" />
         </Button>
       </div>
 

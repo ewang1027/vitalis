@@ -1,5 +1,5 @@
 import { usePatientsDashboard } from '@/hooks/useSupabaseData';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface PatientStatusBarProps {
@@ -19,7 +19,7 @@ export function PatientStatusBar({ onExpand }: PatientStatusBarProps) {
   const { patientsData, loading } = usePatientsDashboard();
 
   return (
-    <div className="h-full w-12 border-l border-border bg-bg-secondary flex flex-col items-center">
+    <div className="h-full w-12 border-l border-border bg-bg-secondary flex flex-col items-center animate-in slide-in-from-right duration-300">
       {/* Expand Button */}
       <div className="p-2 border-b border-border flex items-center justify-center">
         <Button
@@ -29,7 +29,7 @@ export function PatientStatusBar({ onExpand }: PatientStatusBarProps) {
           className="text-text-tertiary hover:text-text-primary h-8 w-8 p-0"
           title="Expand dashboard"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <LayoutDashboard className="h-4 w-4 animate-pulse" />
         </Button>
       </div>
 
