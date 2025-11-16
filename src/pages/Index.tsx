@@ -53,12 +53,8 @@ const Index = ({ onLogout }: IndexProps) => {
     refetchRooms();
     refetchPatients();
     
-    // Auto-open dashboard to show the new/updated patient
-    console.log('📊 [INDEX] Auto-opening dashboard to show patient updates...');
-    setActiveTab('dashboard');
-    
-    // Show success toast
-    toast.success('Patient data updated! Dashboard refreshed.');
+    // Data will automatically refresh in dashboard if it's open
+    console.log('✅ [INDEX] Data refreshed - dashboard will show updates');
   };
 
   // Transform Supabase user to match User type
