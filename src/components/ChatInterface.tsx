@@ -10,6 +10,8 @@ import { parseTaskCommand } from '@/services/taskCommandParser';
 import { useTaskSubscription } from '@/hooks/useTaskSubscription';
 import { TASK_CONFIGS, VisualTaskType } from '@/types/visualTasks';
 import { detectTaskFromConversation } from '@/services/conversationTaskDetector';
+import { runAgent, type AgentMessage, type StreamUpdate } from '@/services/agentOrchestrator';
+import { useAgentVisualization } from '@/hooks/useAgentVisualization';
 
 interface ChatInterfaceProps {
   initialMessages: ChatMessage[];
@@ -33,10 +35,66 @@ export function ChatInterface({ initialMessages, userId, roomId, contextData, on
   const [roomDetails, setRoomDetails] = useState<Record<string, unknown> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { createTask } = useTaskSubscription();
+  const { triggerVisualization } = useAgentVisualization();
+  const [agentConversationHistory, setAgentConversationHistory] = useState<AgentMessage[]>([]);
+  const [isAgentProcessing, setIsAgentProcessing] = useState(false);
+
+  // Helper to format message content and handle JSON display
+  const formatMessageContent = (content: string): string => {
+    try {
+      // Check if the content looks like JSON (starts with { or [)
+      const trimmed = content.trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+          (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        // Try to parse and prettify
+        const parsed = JSON.parse(trimmed);
+        return JSON.stringify(parsed, null, 2);
+      }
+    } catch {
+      // Not valid JSON, return as-is
+    }
+    return content;
+  };
 
   // Get current room info
   const currentRoom = roomId ? contextData?.rooms?.find(r => r.id === roomId) : null;
   const roomName = currentRoom?.room_name || currentRoom?.room_number || roomId;
+
+  // Ref to track if we've initialized messages for this room
+  const initializedRoomRef = useRef<string | null | undefined>(undefined);
+  const prevRoomIdRef = useRef<string | null | undefined>(undefined);
+
+  // Initialize messages only when room actually changes
+  useEffect(() => {
+    // Only reset when roomId changes, not on every initialMessages change
+    if (prevRoomIdRef.current !== roomId) {
+      console.log('🔄 [CHAT] Room changed, initializing messages:', { from: prevRoomIdRef.current, to: roomId });
+      setMessages(initialMessages || []);
+      setAgentConversationHistory([]);
+      prevRoomIdRef.current = roomId;
+      initializedRoomRef.current = roomId;
+    }
+  }, [roomId]); // Only depend on roomId, not initialMessages
+
+  // Initialize on first mount if not initialized
+  useEffect(() => {
+    if (initializedRoomRef.current === undefined && initialMessages.length > 0) {
+      console.log('🔄 [CHAT] First mount, loading initial messages:', initialMessages.length);
+      setMessages(initialMessages);
+      initializedRoomRef.current = roomId;
+    }
+  }, []); // Run only once on mount
+
+  // Sync messages with agent conversation history (only when messages change)
+  useEffect(() => {
+    // Convert chat messages to agent messages format
+    const agentMessages: AgentMessage[] = messages.map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }));
+    console.log('🔄 [CHAT] Syncing conversation history:', agentMessages.length, 'messages');
+    setAgentConversationHistory(agentMessages);
+  }, [messages]);
 
   // Fetch detailed room information when room is selected
   const fetchRoomDetailsData = useCallback(async () => {
@@ -197,7 +255,9 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
           room_id: roomId || null,
           role,
           content,
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          is_archived: false,
+          archived_at: null
         })
         .select()
         .single();
@@ -662,17 +722,27 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
     setInput('');
 
     try {
+      console.log('📤 [USER] Sending message:', messageText);
+      console.log('📝 [USER] Current messages count:', messages.length);
+
       // Save user message to database
       const userMessageData = await saveMessage('user', messageText);
+      console.log('💾 [USER] Message saved to DB:', userMessageData?.id);
 
       // Add user message to UI immediately
       const userMessage = {
         id: userMessageData?.id || `temp-${Date.now()}`,
-        role: 'user',
+        role: 'user' as const,
         content: messageText,
         created_at: new Date().toISOString()
       };
-      setMessages(prev => [...prev, userMessage]);
+
+      console.log('➕ [USER] Adding user message to state');
+      setMessages(prev => {
+        const newMessages = [...prev, userMessage];
+        console.log('📝 [USER] New messages array length:', newMessages.length);
+        return newMessages;
+      });
 
       // Try to parse as task command first
       const availableRoomIds = contextData?.rooms?.map(r => r.id) || [];
@@ -838,521 +908,117 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
         };
         setMessages(prev => [...prev, taskMessage]);
       } else {
-        // Not a task command, send to AI
-        // Prepare message history for OpenRouter
-        const messageHistory = messages.map(msg => ({
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content
-        }));
+        // Not a task command, use AI Agent workflow
+        console.log('🤖 [AGENT] Using multimodal agent workflow...');
 
-        // Add system prompt with context (including room details if viewing a room)
-        const systemPrompt = createSystemPrompt(contextData, roomDetails);
-        const apiMessages = [systemPrompt, ...messageHistory, { role: 'user' as const, content: messageText }];
+        setIsAgentProcessing(true);
 
-        // Get AI response from OpenRouter
-        const aiResponse = await sendChatMessage(apiMessages);
-        console.log('🤖 [AI_RESPONSE] Full AI Response:', aiResponse);
-        console.log('🤖 [AI_RESPONSE] Response length:', aiResponse.length, 'chars');
-
-        // Check if AI response contains a task execution command
-        console.log('🔍 [TASK_DETECT] Searching for [EXECUTE_TASK: ...] command in response...');
-        // Updated regex to support: "from room-X", "to room-Y", or "from room-X to room-Y"
-        const taskCommandMatch = aiResponse.match(/\[EXECUTE_TASK:\s*(\w+)\s+(?:from\s+room-(\d+|AVAILABLE)(?:\s+to\s+room-(\d+|AVAILABLE))?|to\s+room-(\d+|AVAILABLE))\]/i);
-        console.log('🔍 [TASK_DETECT] Regex match result:', taskCommandMatch);
-        
-        if (!taskCommandMatch) {
-          console.warn('⚠️ [TASK_DETECT] No [EXECUTE_TASK: ...] command found in AI response!');
-          console.warn('⚠️ [TASK_DETECT] AI may not have included the required command format');
-        } else {
-          console.log('✅ [TASK_DETECT] Task command detected!');
-          console.log('✅ [TASK_DETECT] Full match:', taskCommandMatch[0]);
-          console.log('✅ [TASK_DETECT] Task type:', taskCommandMatch[1]);
-          console.log('✅ [TASK_DETECT] Source room:', taskCommandMatch[2] || 'N/A');
-          console.log('✅ [TASK_DETECT] Target room:', taskCommandMatch[3]);
-        }
-
-        if (taskCommandMatch) {
-          const [fullMatch, taskType, sourceRoom, targetRoomFromTransfer, targetRoomFromDirect] = taskCommandMatch;
-          // Target room can be from "from X to Y" pattern (group 3) or "to Y" pattern (group 4)
-          const targetRoom = targetRoomFromTransfer || targetRoomFromDirect || sourceRoom;
-
-          console.log('✅ Task command detected:', { taskType, sourceRoom, targetRoom });
-
-          // Remove the command from the displayed message
-          const displayMessage = aiResponse.replace(fullMatch, '').trim();
-
-          // Create the task
-          const taskConfig = TASK_CONFIGS[taskType as VisualTaskType];
-          if (taskConfig) {
-            try {
-              // Resolve AVAILABLE placeholder by querying database
-              let targetRoomId = targetRoom === 'AVAILABLE' ? null : `room-${targetRoom}`;
-
-              if (targetRoom === 'AVAILABLE') {
-                const availableRoom = await findAvailableRoom();
-                if (availableRoom) {
-                  targetRoomId = availableRoom;
-                  console.log(`✅ Found available room: ${targetRoomId}`);
-                } else {
-                  throw new Error('No available rooms found');
-                }
-              }
-
-              if (!targetRoomId) {
-                throw new Error('Could not determine target room');
-              }
-
-              // Validate target room exists, use intelligent routing if not
-              const { data: roomExists } = await supabase
-                .from('rooms')
-                .select('id')
-                .eq('id', targetRoomId)
-                .maybeSingle();
-              
-              let finalRoomId = targetRoomId;
-              let wasRerouted = false;
-              
-              if (!roomExists) {
-                console.log(`⚠️ Room ${targetRoomId} not found, using intelligent routing...`);
-                const bestRoom = await findBestRoomForTask(taskType);
-                if (bestRoom) {
-                  finalRoomId = bestRoom;
-                  wasRerouted = true;
-                  console.log(`✅ Rerouted task to ${finalRoomId}`);
-                } else {
-                  // Last resort: try to find any room
-                  const anyRoom = await findAvailableRoom();
-                  if (anyRoom) {
-                    finalRoomId = anyRoom;
-                    wasRerouted = true;
-                    console.log(`⚠️ Using any available room: ${finalRoomId}`);
-                  } else {
-                    throw new Error('No suitable room found');
-                  }
-                }
-              }
-
-              await createTask({
-                type: taskType as VisualTaskType,
-                title: `${taskConfig.icon} ${taskType.replace(/_/g, ' ')}`,
-                description: `Task created from conversation`,
-                targetRoomId: finalRoomId,
-                sourceRoomId: sourceRoom && sourceRoom !== 'AVAILABLE' ? `room-${sourceRoom}` : undefined,
-                status: 'pending',
-                priority: 'medium',
-                estimatedDuration: taskConfig.defaultDuration,
-              });
-
-              // Handle patient discharge
-              if (taskType === 'patient_discharge') {
-                try {
-                  const patient = await dischargePatient(finalRoomId);
-                  
-                  if (patient) {
-                    // Get room details for feedback
-                    const { data: roomData } = await supabase
-                      .from('rooms')
-                      .select('room_name, room_number, room_type')
-                      .eq('id', finalRoomId)
-                      .maybeSingle();
-                    
-                    const roomDisplay = roomData?.room_name || roomData?.room_number || finalRoomId;
-                    
-                    console.log(`✅ ${patient.name} discharged from ${roomDisplay}`);
-                    toast.success(`✅ ${patient.name} discharged from ${roomDisplay}`);
-                    
-                    // Trigger data refresh in parent to update UI
-                    console.log('🔄 [REFRESH] Triggering parent data refresh...');
-                    onDataUpdate?.();
-                    
-                    // Refresh room details if we're viewing this room
-                    if (roomId === finalRoomId) {
-                      console.log('🔄 [REFRESH] Refreshing room details for current room...');
-                      setRoomDetails(null);
-                      // Refetch room details after a short delay to ensure DB updates have propagated
-                      setTimeout(() => {
-                        fetchRoomDetailsData();
-                      }, 500);
-                    }
-                  }
-                } catch (error) {
-                  console.error('Error in patient discharge:', error);
-                  toast.error('Failed to discharge patient');
-                }
-              }
-
-              // Handle patient onboarding - create patient record and room assignment
-              if (taskType === 'patient_onboarding') {
-                try {
-                  console.log('👤 [ONBOARDING-AI] Starting patient onboarding from AI command...');
-                  // Extract patient info from AI response and user messages
-                  const conversationText = [...messages.slice(-3).map(m => m.content), messageText, aiResponse].join(' ');
-                  console.log('👤 [ONBOARDING-AI] Conversation text for extraction:', conversationText);
-                  const patientInfo = extractPatientInfo(conversationText);
-                  console.log('👤 [ONBOARDING-AI] Extracted patient info:', JSON.stringify(patientInfo, null, 2));
-                  
-                  // Find best room based on patient condition
-                  const roomSelection = await findBestRoomForPatient(patientInfo);
-                  if (roomSelection) {
-                    finalRoomId = roomSelection.roomId;
-                  }
-                  
-                  // Create patient record
-                  const patient = await createPatient(patientInfo);
-                  
-                  if (patient) {
-                    // Create room assignment
-                    await createRoomAssignment(finalRoomId, patient.id);
-                    
-                    // Update room status
-                    await supabase
-                      .from('rooms')
-                      .update({ status: 'occupied' })
-                      .eq('id', finalRoomId);
-                    
-                    // Get room details for feedback
-                    const { data: roomData } = await supabase
-                      .from('rooms')
-                      .select('room_name, room_number, room_type')
-                      .eq('id', finalRoomId)
-                      .maybeSingle();
-                    
-                    const roomDisplay = roomData?.room_name || roomData?.room_number || finalRoomId;
-                    const roomTypeInfo = roomData?.room_type ? ` (${roomData.room_type})` : '';
-                    
-                    console.log(`✅ Patient ${patient.name} admitted to ${roomDisplay}`);
-                    toast.success(`✅ ${patient.name} admitted to ${roomDisplay}${roomTypeInfo}`);
-                    
-                    // Trigger data refresh in parent to update UI
-                    console.log('🔄 [REFRESH] Triggering parent data refresh...');
-                    onDataUpdate?.();
-                  } else {
-                    // Even if patient creation fails, continue with task
-                    console.log('⚠️ Continuing without patient record');
-                    await supabase
-                      .from('rooms')
-                      .update({ status: 'occupied' })
-                      .eq('id', finalRoomId);
-                  }
-                } catch (error) {
-                  console.error('Error in patient onboarding:', error);
-                  // Don't fail the whole task - just log and continue
-                }
-              }
-
-              console.log('Task created successfully');
-
-              // Add success indicator to message with room info
-              let roomInfo = '';
-              if (targetRoom === 'AVAILABLE') {
-                roomInfo = ` Assigned to ${finalRoomId}.`;
-              } else if (wasRerouted) {
-                roomInfo = ` (routed to ${finalRoomId})`;
-              }
-              const finalMessage = `${displayMessage}\n\n✅ Task created!${roomInfo} You can see it visualized in the 3D map.`;
-
-              // Save and display the modified message
-              const aiMessageData = await saveMessage('assistant', finalMessage);
-              const aiMessage = {
-                id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-                role: 'assistant',
-                content: finalMessage,
-                created_at: new Date().toISOString()
-              };
-              setMessages(prev => [...prev, aiMessage]);
-            } catch (taskError) {
-              console.error('Error creating task:', taskError);
-              // Fall through to display the AI message without task creation
-              const aiMessageData = await saveMessage('assistant', displayMessage);
-              const aiMessage = {
-                id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-                role: 'assistant',
-                content: displayMessage + '\n\n⚠️ Note: Task visualization is temporarily unavailable.',
-                created_at: new Date().toISOString()
-              };
-              setMessages(prev => [...prev, aiMessage]);
+        try {
+          // Run the agent with full context and tool calling
+          const agentResponse = await runAgent(
+            messageText,
+            agentConversationHistory,
+            (update: StreamUpdate) => {
+              // Log progress updates
+              console.log(`🔄 [AGENT_PROGRESS] ${update.type}: ${update.content}`);
             }
-          } else {
-            console.warn('Unknown task type:', taskType);
-            // Display message without task creation
-            const aiMessageData = await saveMessage('assistant', displayMessage);
-            const aiMessage = {
-              id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-              role: 'assistant',
-              content: displayMessage,
-              created_at: new Date().toISOString()
-            };
-            setMessages(prev => [...prev, aiMessage]);
-          }
-        } else {
-          console.log('⚠️ No [EXECUTE_TASK: ...] command found in AI response');
-          
-          // FALLBACK: Check if AI is responding to our patient check-in question
-          const lastAssistantMessage = messages.filter(m => m.role === 'assistant').pop();
-          const isPatientCheckInFlow = lastAssistantMessage?.content.toLowerCase().includes("what's the patient's name");
-          
-          if (isPatientCheckInFlow && aiResponse.toLowerCase().includes('checking in')) {
-            console.log('🔄 FALLBACK: Detected patient check-in flow without [EXECUTE_TASK] command');
-            console.log('🔄 Attempting to extract patient name from user message:', messageText);
-            
-            // Extract patient info and create task manually
-            const patientInfo = extractPatientInfo(messageText);
-            console.log('📋 Extracted patient info:', patientInfo);
-            
-            try {
-              // Find best room
-              const roomSelection = await findBestRoomForPatient(patientInfo);
-              const targetRoomId = roomSelection?.roomId || await findAvailableRoom();
-              
-              if (targetRoomId) {
-                console.log('🏥 Selected room:', targetRoomId);
-                
-                // Create the task
-                const taskConfig = TASK_CONFIGS['patient_onboarding'];
-                await createTask({
-                  type: 'patient_onboarding',
-                  title: `${taskConfig.icon} patient_onboarding`,
-                  description: `Checking in ${patientInfo.name || 'patient'}`,
-                  targetRoomId,
-                  status: 'pending',
-                  priority: 'medium',
-                  estimatedDuration: taskConfig.defaultDuration,
-                });
-                
-                console.log('✅ Task created via fallback mechanism');
-                
-                // Create patient and assignment
-                const patient = await createPatient(patientInfo);
-                if (patient) {
-                  await createRoomAssignment(targetRoomId, patient.id);
-                  await supabase.from('rooms').update({ status: 'occupied' }).eq('id', targetRoomId);
-                  
-                  const { data: roomData } = await supabase
-                    .from('rooms')
-                    .select('room_name, room_number, room_type')
-                    .eq('id', targetRoomId)
-                    .maybeSingle();
-                  
-                  const roomDisplay = roomData?.room_name || roomData?.room_number || targetRoomId;
-                  const roomTypeInfo = roomData?.room_type ? ` (${roomData.room_type})` : '';
-                  
-                  toast.success(`✅ ${patient.name} admitted to ${roomDisplay}${roomTypeInfo}`);
-                  
-                  // Update AI response to include success
-                  const successMessage = `${aiResponse}\n\n✅ ${patient.name} admitted to ${roomDisplay}${roomTypeInfo}! You can see the task in the 3D map.`;
-                  const aiMessageData = await saveMessage('assistant', successMessage);
-                  const aiMessage = {
-                    id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-                    role: 'assistant',
-                    content: successMessage,
-                    created_at: new Date().toISOString()
-                  };
-                  setMessages(prev => [...prev, aiMessage]);
-                  return; // Exit early - we handled it
-                }
-              }
-            } catch (error) {
-              console.error('❌ Fallback task creation failed:', error);
-            }
-          }
-          
-          // No explicit task command - try to detect from conversation context
-          console.log('🔍 Attempting conversation-based task detection...');
-          const conversationHistory = [
-            ...messages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-            { role: 'user' as const, content: messageText },
-            { role: 'assistant' as const, content: aiResponse }
-          ];
-
-          const detectedTask = detectTaskFromConversation(
-            conversationHistory,
-            contextData?.rooms?.map(r => r.id) || []
           );
 
-          console.log('📊 Task detection result:', detectedTask);
+          console.log('✅ [AGENT] Agent response received:', agentResponse);
+          console.log('📊 [AGENT] Response details:', {
+            hasMessage: !!agentResponse.message,
+            messageLength: agentResponse.message?.length,
+            toolResultsCount: agentResponse.toolResults?.length,
+            requiresVisualization: agentResponse.requiresVisualization,
+            conversationHistoryLength: agentResponse.conversationHistory?.length,
+          });
 
-          if (detectedTask && detectedTask.confidence >= 0.8) {
-            // High confidence - create the task
-            const taskConfig = TASK_CONFIGS[detectedTask.type];
-            if (taskConfig) {
-              try {
-                // Validate and potentially reroute the target room
-                let finalTargetRoomId = detectedTask.targetRoomId;
-                let wasRerouted = false;
-                
-                // Check if the target room exists
-                const { data: roomExists } = await supabase
-                  .from('rooms')
-                  .select('id')
-                  .eq('id', detectedTask.targetRoomId)
-                  .maybeSingle();
-                
-                // If room doesn't exist, use intelligent routing
-                if (!roomExists) {
-                  console.log(`⚠️ Room ${detectedTask.targetRoomId} not found, using intelligent routing...`);
-                  const bestRoom = await findBestRoomForTask(detectedTask.type);
-                  if (bestRoom) {
-                    finalTargetRoomId = bestRoom;
-                    wasRerouted = true;
-                    console.log(`✅ Rerouted task to ${finalTargetRoomId}`);
-                  }
-                }
-                
-                await createTask({
-                  type: detectedTask.type,
-                  title: `${taskConfig.icon} ${detectedTask.type.replace(/_/g, ' ')}`,
-                  description: `Task auto-detected from conversation`,
-                  targetRoomId: finalTargetRoomId,
-                  sourceRoomId: detectedTask.sourceRoomId,
-                  status: 'pending',
-                  priority: detectedTask.priority,
-                  estimatedDuration: taskConfig.defaultDuration,
-                });
+          // DON'T update conversation history here - it causes sync issues
+          // The messages state will be updated below, which triggers the sync effect
+          // setAgentConversationHistory(agentResponse.conversationHistory);
 
-                // Handle patient discharge
-                if (detectedTask.type === 'patient_discharge') {
-                  try {
-                    const patient = await dischargePatient(finalTargetRoomId);
-                    
-                    if (patient) {
-                      // Get room details for feedback
-                      const { data: roomData } = await supabase
-                        .from('rooms')
-                        .select('room_name, room_number, room_type')
-                        .eq('id', finalTargetRoomId)
-                        .maybeSingle();
-                      
-                      const roomDisplay = roomData?.room_name || roomData?.room_number || finalTargetRoomId;
-                      
-                      console.log(`✅ ${patient.name} discharged from ${roomDisplay}`);
-                      toast.success(`✅ ${patient.name} discharged from ${roomDisplay}`);
-                      
-                      // Trigger data refresh in parent to update UI
-                      console.log('🔄 [REFRESH] Triggering parent data refresh...');
-                      onDataUpdate?.();
-                      
-                      // Refresh room details if we're viewing this room
-                      if (roomId === finalTargetRoomId) {
-                        console.log('🔄 [REFRESH] Refreshing room details for current room...');
-                        setRoomDetails(null);
-                        // Refetch room details after a short delay to ensure DB updates have propagated
-                        setTimeout(() => {
-                          fetchRoomDetailsData();
-                        }, 500);
-                      }
-                    }
-                  } catch (error) {
-                    console.error('Error in patient discharge:', error);
-                    toast.error('Failed to discharge patient');
-                  }
-                }
-
-                // Handle patient onboarding - create patient record and room assignment
-                if (detectedTask.type === 'patient_onboarding') {
-                  try {
-                    // Extract patient info from conversation
-                    const conversationText = conversationHistory.map(m => m.content).join(' ');
-                    const patientInfo = extractPatientInfo(conversationText);
-                    console.log('Extracted patient info from detected conversation:', patientInfo);
-                    
-                    // Find best room based on patient condition
-                    const roomSelection = await findBestRoomForPatient(patientInfo);
-                    if (roomSelection) {
-                      finalTargetRoomId = roomSelection.roomId;
-                    }
-                    
-                    // Create patient record
-                    const patient = await createPatient(patientInfo);
-                    
-                    if (patient) {
-                      // Create room assignment
-                      await createRoomAssignment(finalTargetRoomId, patient.id);
-                      
-                      // Update room status
-                      await supabase
-                        .from('rooms')
-                        .update({ status: 'occupied' })
-                        .eq('id', finalTargetRoomId);
-                      
-                      // Get room details for feedback
-                      const { data: roomData } = await supabase
-                        .from('rooms')
-                        .select('room_name, room_number, room_type')
-                        .eq('id', finalTargetRoomId)
-                        .maybeSingle();
-                      
-                      const roomDisplay = roomData?.room_name || roomData?.room_number || finalTargetRoomId;
-                      const roomTypeInfo = roomData?.room_type ? ` (${roomData.room_type})` : '';
-                      
-                      console.log(`✅ Patient ${patient.name} admitted to ${roomDisplay}`);
-                      toast.success(`✅ ${patient.name} admitted to ${roomDisplay}${roomTypeInfo}`);
-                      
-                      // Trigger data refresh in parent to update UI
-                      console.log('🔄 [REFRESH] Triggering parent data refresh...');
-                      onDataUpdate?.();
-                    } else {
-                      // Even if patient creation fails, continue with task
-                      console.log('⚠️ Continuing without patient record');
-                      await supabase
-                        .from('rooms')
-                        .update({ status: 'occupied' })
-                        .eq('id', finalTargetRoomId);
-                    }
-                  } catch (error) {
-                    console.error('Error in patient onboarding:', error);
-                    // Don't fail the whole task - just log and continue
-                  }
-                }
-
-                console.log('Task auto-created successfully');
-
-                // Add success indicator to message
-                const rerouteNote = wasRerouted ? ` (routed to ${finalTargetRoomId})` : '';
-                const finalMessage = `${aiResponse}\n\n✅ Task created!${rerouteNote} You can see it visualized in the 3D map.`;
-
-                const aiMessageData = await saveMessage('assistant', finalMessage);
-                const aiMessage = {
-                  id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-                  role: 'assistant',
-                  content: finalMessage,
-                  created_at: new Date().toISOString()
-                };
-                setMessages(prev => [...prev, aiMessage]);
-              } catch (taskError) {
-                console.error('Error auto-creating task:', taskError);
-                // Display without task creation
-                const aiMessageData = await saveMessage('assistant', aiResponse);
-                const aiMessage = {
-                  id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-                  role: 'assistant',
-                  content: aiResponse,
-                  created_at: new Date().toISOString()
-                };
-                setMessages(prev => [...prev, aiMessage]);
-              }
-            } else {
-              // No task config found, display normally
-              const aiMessageData = await saveMessage('assistant', aiResponse);
-              const aiMessage = {
-                id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-                role: 'assistant',
-                content: aiResponse,
-                created_at: new Date().toISOString()
-              };
-              setMessages(prev => [...prev, aiMessage]);
-            }
-          } else {
-            // Low confidence or no task detected - just display AI response normally
-            const aiMessageData = await saveMessage('assistant', aiResponse);
-            const aiMessage = {
-              id: aiMessageData?.id || `temp-ai-${Date.now()}`,
-              role: 'assistant',
-              content: aiResponse,
-              created_at: new Date().toISOString()
-            };
-            setMessages(prev => [...prev, aiMessage]);
+          // Handle visualizations
+          if (agentResponse.requiresVisualization && agentResponse.visualizationData) {
+            console.log('🎨 [AGENT] Triggering visualization:', agentResponse.visualizationData);
+            await triggerVisualization({
+              taskType: agentResponse.visualizationData.taskType,
+              sourceRoomId: agentResponse.visualizationData.sourceRoomId,
+              targetRoomId: agentResponse.visualizationData.targetRoomId,
+              taskId: agentResponse.visualizationData.taskId,
+            });
           }
+
+          // Trigger data refresh if needed (for patient operations, etc.)
+          if (agentResponse.toolResults && agentResponse.toolResults.length > 0) {
+            const hasPatientOperation = agentResponse.toolResults.some(tr =>
+              ['check_in_patient', 'discharge_patient', 'transfer_patient'].includes(tr.toolName)
+            );
+            if (hasPatientOperation) {
+              console.log('🔄 [AGENT] Triggering data refresh for patient operation...');
+              onDataUpdate?.();
+            }
+          }
+
+          // Display agent's response
+          const aiResponse = agentResponse.message;
+          console.log('🤖 [AGENT] Displaying AI response:', aiResponse);
+          console.log('💾 [AGENT] Current messages count before adding:', messages.length);
+
+          // Save and display the AI message
+          const aiMessageData = await saveMessage('assistant', aiResponse);
+          console.log('💾 [AGENT] Message saved to DB:', aiMessageData?.id);
+
+          const aiMessage = {
+            id: aiMessageData?.id || `temp-ai-${Date.now()}`,
+            role: 'assistant' as const,
+            content: aiResponse,
+            created_at: new Date().toISOString()
+          };
+
+          console.log('➕ [AGENT] Adding AI message to state:', aiMessage);
+          setMessages(prev => {
+            const newMessages = [...prev, aiMessage];
+            console.log('📝 [AGENT] New messages array length:', newMessages.length);
+            return newMessages;
+          });
+
+        } catch (agentError) {
+          console.error('❌ [AGENT] Error:', agentError);
+
+          // Provide helpful error message based on error type
+          let errorMessage = `I encountered an error while processing your request.`;
+
+          if (agentError instanceof Error) {
+            if (agentError.message.includes('500')) {
+              errorMessage = `The AI service is temporarily unavailable (server error). This has been automatically retried. Please try again in a moment.`;
+            } else if (agentError.message.includes('401') || agentError.message.includes('403')) {
+              errorMessage = `Authentication error with the AI service. Please contact support.`;
+            } else if (agentError.message.includes('429')) {
+              errorMessage = `Rate limit reached. Please wait a moment before trying again.`;
+            } else if (agentError.message.includes('timeout') || agentError.message.includes('network')) {
+              errorMessage = `Network connection issue. Please check your internet connection and try again.`;
+            } else {
+              errorMessage = `I encountered an error: ${agentError.message}. Please try again.`;
+            }
+          }
+
+          const aiMessageData = await saveMessage('assistant', errorMessage);
+          const aiMessage = {
+            id: aiMessageData?.id || `temp-ai-${Date.now()}`,
+            role: 'assistant',
+            content: errorMessage,
+            created_at: new Date().toISOString()
+          };
+          setMessages(prev => [...prev, aiMessage]);
+        } finally {
+          setIsAgentProcessing(false);
         }
+
+        /*
+         * Legacy task command detection code removed
+         * The new agent workflow handles all task creation, patient operations,
+         * and visualizations automatically via function calling
+         */
       }
 
     } catch (error: unknown) {
@@ -1383,7 +1049,6 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
     setInput(prompt);
     handleSend(prompt);
   };
-
   return (
     <div className="flex h-full flex-col">
       {/* Quick Prompts - Always Visible */}
@@ -1452,7 +1117,7 @@ Return ONLY the 3 prompts, one per line, no numbering, no extra text.`
               }}
             >
               <div className="text-xs whitespace-pre-wrap" style={{ color: message.role === 'user' ? 'hsl(var(--text-white))' : 'hsl(var(--text-dark))' }}>
-                {message.content}
+                {formatMessageContent(message.content)}
               </div>
             </div>
           </div>

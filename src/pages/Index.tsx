@@ -52,6 +52,9 @@ const Index = ({ onLogout }: IndexProps) => {
     console.log('🔄 [INDEX] Data update triggered - refreshing rooms and patients...');
     refetchRooms();
     refetchPatients();
+    
+    // Data will automatically refresh in dashboard if it's open
+    console.log('✅ [INDEX] Data refreshed - dashboard will show updates');
   };
 
   // Transform Supabase user to match User type

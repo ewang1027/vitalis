@@ -144,6 +144,8 @@ export type Database = {
           role: string
           content: string
           created_at: string
+          is_archived: boolean
+          archived_at: string | null
         }
       }
       room_assignments: {

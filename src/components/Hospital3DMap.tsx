@@ -1067,6 +1067,9 @@ function calculatePathToRoom(roomPosition: [number, number, number], roomSize: [
 }
 
 export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup }: Hospital3DMapProps) {
+// View mode state - 2D or 3D
+const [viewMode, setViewMode] = useState<'2D' | '3D'>('3D');
+
 // Default camera position (less aerial view) - memoized to prevent recreating on every render
 const defaultCameraPosition = useMemo<[number, number, number]>(() => [0, 20, 28], []);
 const defaultCameraLookAt = useMemo<[number, number, number]>(() => [0, 0, 0], []);
@@ -1077,8 +1080,6 @@ position: [number, number, number];
 lookAt: [number, number, number];
 } | null>(null);
 
-// Pathfinding state - stores the current path to display
-const [currentPath, setCurrentPath] = useState<[number, number, number][]>([]);
 
 // Helper function to get room rotation
 function getRoomRotation(room: Room): number {
@@ -1163,25 +1164,6 @@ onCloseRoomPopup();
 }
 };
 
-// Test pathfinding - draws path to a random room
-const handleTestPathfinding = () => {
-if (room3DData.length === 0) return;
-
-// Pick a random room (preferably a perimeter room for better demonstration)
-const randomIndex = Math.floor(Math.random() * room3DData.length);
-const targetRoom = room3DData[randomIndex];
-
-// Calculate path from help desk to this room
-const path = calculatePathToRoom(targetRoom.position, targetRoom.size);
-setCurrentPath(path);
-
-console.log(`Drawing path to ${targetRoom.label} at position:`, targetRoom.position);
-};
-
-// Clear the current path
-const handleClearPath = () => {
-setCurrentPath([]);
-};
 
 // Clean minimal corridor system - central area + perimeter loop
 const baseOffset = 13; // Same as in getDefaultPosition
@@ -1253,8 +1235,190 @@ if (readyCount === 0) return 'needs-attention';
 return 'occupied';
 };
 
+// 2D Map Component - uses same coordinates as 3D
+const Map2D = () => {
+	const scale = 15; // Scale factor to convert 3D coordinates to 2D pixels
+	const offsetX = 400; // Center the map
+	const offsetY = 400;
+
+	const getStatusColor = (status: 'ready' | 'needs-attention' | 'occupied') => {
+		switch (status) {
+			case 'ready': return '#10b981';
+			case 'needs-attention': return '#ef4444';
+			case 'occupied': return '#f59e0b';
+			default: return '#6b7280';
+		}
+	};
+
+	return (
+		<div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
+			<svg width="100%" height="100%" viewBox="0 0 800 800" style={{ background: 'linear-gradient(to bottom, #f3f4f6, #e5e7eb)' }}>
+				{/* Central area */}
+				<rect
+					x={offsetX - 16 * scale / 2}
+					y={offsetY - 16 * scale / 2}
+					width={16 * scale}
+					height={16 * scale}
+					fill="#9ca3af"
+					opacity="0.3"
+				/>
+
+				{/* Help desk at center */}
+				<circle
+					cx={offsetX}
+					cy={offsetY}
+					r={20}
+					fill="#374151"
+					stroke="#1f2937"
+					strokeWidth="2"
+				/>
+				<text
+					x={offsetX}
+					y={offsetY + 5}
+					textAnchor="middle"
+					fontSize="12"
+					fill="white"
+					fontWeight="600"
+				>
+					HELP
+				</text>
+
+
+				{/* Rooms */}
+				{room3DData.map((room) => {
+					const [x, , z] = room.position;
+					const [width, , depth] = room.size;
+					const status = getRoomStatus(room.id);
+					const isSelected = selectedRoomId === room.id;
+
+					return (
+						<g key={room.id}>
+							{/* Room rectangle */}
+							<rect
+								x={offsetX + (x - width / 2) * scale}
+								y={offsetY + (z - depth / 2) * scale}
+								width={width * scale}
+								height={depth * scale}
+								fill={isSelected ? getStatusColor(status) : '#e8f0f2'}
+								stroke={getStatusColor(status)}
+								strokeWidth={isSelected ? 3 : 2}
+								opacity={isSelected ? 0.9 : 0.7}
+								style={{ cursor: 'pointer' }}
+								onClick={() => onRoomSelect(room.id)}
+								onMouseEnter={(e) => {
+									e.currentTarget.style.opacity = '1';
+									e.currentTarget.style.strokeWidth = '3';
+								}}
+								onMouseLeave={(e) => {
+									e.currentTarget.style.opacity = isSelected ? '0.9' : '0.7';
+									e.currentTarget.style.strokeWidth = isSelected ? '3' : '2';
+								}}
+							/>
+
+							{/* Room label */}
+							<text
+								x={offsetX + x * scale}
+								y={offsetY + z * scale}
+								textAnchor="middle"
+								fontSize="10"
+								fill="#1f2937"
+								fontWeight="600"
+								pointerEvents="none"
+							>
+								{room.label}
+							</text>
+
+							{/* Status indicator dot */}
+							<circle
+								cx={offsetX + (x - width / 2 + 0.3) * scale}
+								cy={offsetY + (z - depth / 2 + 0.3) * scale}
+								r={4}
+								fill={getStatusColor(status)}
+							/>
+						</g>
+					);
+				})}
+			</svg>
+
+			{/* Room details popup for 2D view */}
+			{selectedRoomId && (
+				<div style={{
+					position: 'absolute',
+					top: '50%',
+					left: '50%',
+					transform: 'translate(-50%, -50%)',
+					background: 'white',
+					borderRadius: '12px',
+					boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+					padding: '16px',
+					minWidth: '250px',
+					border: `3px solid ${getStatusColor(getRoomStatus(selectedRoomId))}`,
+					zIndex: 1000
+				}}>
+					<button
+						onClick={() => onCloseRoomPopup?.()}
+						style={{
+							position: 'absolute',
+							top: '8px',
+							right: '8px',
+							background: 'transparent',
+							border: 'none',
+							cursor: 'pointer',
+							fontSize: '20px',
+							color: '#6b7280',
+							padding: '4px',
+							lineHeight: 1
+						}}
+					>
+						×
+					</button>
+
+					<h3 style={{ fontSize: '16px', fontWeight: 'bold', color: '#1f2937', marginBottom: '12px', paddingRight: '24px' }}>
+						{room3DData.find(r => r.id === selectedRoomId)?.label}
+					</h3>
+
+					<div style={{ marginBottom: '12px', fontSize: '12px' }}>
+						<p style={{ fontWeight: '600', color: '#1f2937' }}>
+							{rooms.find(r => r.id === selectedRoomId)?.room_name}
+						</p>
+						<p style={{ fontSize: '11px', color: '#6b7280' }}>
+							Status: {rooms.find(r => r.id === selectedRoomId)?.status} •
+							Type: {rooms.find(r => r.id === selectedRoomId)?.room_type}
+							{rooms.find(r => r.id === selectedRoomId)?.floor && ` • Floor ${rooms.find(r => r.id === selectedRoomId)?.floor}`}
+						</p>
+					</div>
+
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							onEnterRoom?.(selectedRoomId);
+						}}
+						style={{
+							width: '100%',
+							padding: '8px 16px',
+							background: '#10b981',
+							color: 'white',
+							border: 'none',
+							borderRadius: '8px',
+							fontSize: '13px',
+							fontWeight: '600',
+							cursor: 'pointer'
+						}}
+					>
+						🔍 Enter Room (3D View)
+					</button>
+				</div>
+			)}
+		</div>
+	);
+};
+
 return (
 <div style={{ width: '100%', height: '100%', position: 'relative', background: 'linear-gradient(to bottom, #f3f4f6, #e5e7eb)' }}>
+{/* Render 2D or 3D based on view mode */}
+{viewMode === '2D' ? (
+<Map2D />
+) : (
 <Suspense fallback={<LoadingFallback />}>
 <Canvas shadows camera={{ position: defaultCameraPosition, fov: 60 }}>
 {/* Lighting */}
@@ -1300,10 +1464,9 @@ rotation={room.rotation}
 />
 ))}
 
-{/* Pathfinding visualization */}
-{currentPath.length > 0 && <DottedPathLine points={currentPath} />}
 </Canvas>
 </Suspense>
+)}
 
 {/* Compact Transparent Header */}
 <div style={{
@@ -1375,72 +1538,84 @@ boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
 </p>
 </div>
 
-{/* Pathfinding Test Buttons */}
+{/* Bottom Left Controls */}
 <div style={{
 position: 'absolute',
 bottom: '16px',
 left: '16px',
 display: 'flex',
-gap: '8px',
+gap: '12px',
+alignItems: 'center',
 zIndex: 10
 }}>
-<button
-onClick={handleTestPathfinding}
-style={{
+{/* Sliding Toggle Switch for 2D/3D */}
+<div style={{
+position: 'relative',
+background: 'rgba(255, 255, 255, 0.95)',
+borderRadius: '12px',
+padding: '4px',
+display: 'flex',
+boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+backdropFilter: 'blur(8px)',
+border: '1px solid rgba(0,0,0,0.1)'
+}}>
+{/* Sliding background */}
+<div style={{
+position: 'absolute',
+top: '4px',
+left: viewMode === '2D' ? '4px' : 'calc(50%)',
+width: 'calc(50% - 4px)',
+height: 'calc(100% - 8px)',
 background: '#10b981',
-color: 'white',
+borderRadius: '8px',
+transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
+zIndex: 0
+}} />
+
+{/* 2D Option */}
+<button
+onClick={() => setViewMode('2D')}
+style={{
+position: 'relative',
+zIndex: 1,
+background: 'transparent',
 border: 'none',
 borderRadius: '8px',
-padding: '10px 16px',
-fontSize: '12px',
+padding: '8px 20px',
+fontSize: '13px',
 fontWeight: '600',
 cursor: 'pointer',
-boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-transition: 'all 0.2s'
-}}
-onMouseEnter={(e) => {
-e.currentTarget.style.background = '#059669';
-e.currentTarget.style.transform = 'translateY(-2px)';
-e.currentTarget.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
-}}
-onMouseLeave={(e) => {
-e.currentTarget.style.background = '#10b981';
-e.currentTarget.style.transform = 'translateY(0)';
-e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+color: viewMode === '2D' ? 'white' : '#6b7280',
+transition: 'color 0.3s ease',
+minWidth: '60px'
 }}
 >
-🗺️ Test Pathfinding
+2D
 </button>
 
-{currentPath.length > 0 && (
+{/* 3D Option */}
 <button
-onClick={handleClearPath}
+onClick={() => setViewMode('3D')}
 style={{
-background: '#ef4444',
-color: 'white',
+position: 'relative',
+zIndex: 1,
+background: 'transparent',
 border: 'none',
 borderRadius: '8px',
-padding: '10px 16px',
-fontSize: '12px',
+padding: '8px 20px',
+fontSize: '13px',
 fontWeight: '600',
 cursor: 'pointer',
-boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-transition: 'all 0.2s'
-}}
-onMouseEnter={(e) => {
-e.currentTarget.style.background = '#dc2626';
-e.currentTarget.style.transform = 'translateY(-2px)';
-e.currentTarget.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
-}}
-onMouseLeave={(e) => {
-e.currentTarget.style.background = '#ef4444';
-e.currentTarget.style.transform = 'translateY(0)';
-e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+color: viewMode === '3D' ? 'white' : '#6b7280',
+transition: 'color 0.3s ease',
+minWidth: '60px'
 }}
 >
-✕ Clear Path
+3D
 </button>
-)}
+</div>
+
 </div>
 
 <style>{`
