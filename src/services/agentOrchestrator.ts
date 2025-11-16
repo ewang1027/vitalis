@@ -628,6 +628,7 @@ Today: ${new Date().toLocaleDateString()}`,
     const modelsTried: string[] = [];
     let response: Response | null = null;
     let lastError: Error | null = null;
+    let successfulModel: string = MODELS.primary; // Track which model succeeded
 
     for (const [modelType, modelName] of Object.entries(MODELS)) {
       try {
@@ -691,6 +692,7 @@ Today: ${new Date().toLocaleDateString()}`,
         // If successful, break out of loop
         if (response.ok) {
           console.log(`✅ [AGENT] Success with model: ${modelName}`);
+          successfulModel = modelName; // Store the successful model
           break;
         }
 
@@ -733,6 +735,7 @@ Today: ${new Date().toLocaleDateString()}`,
             if (simpleResponse.ok) {
               console.log(`✅ [AGENT] SUCCESS without tools!`);
               response = simpleResponse;
+              successfulModel = modelName; // Store the successful model
               break;
             }
           } catch (retryError) {
@@ -936,7 +939,7 @@ Today: ${new Date().toLocaleDateString()}`,
           'X-Title': 'Hospital Management System',
         },
         body: JSON.stringify({
-          model: modelName, // Use same model as initial request
+          model: successfulModel, // Use same model as initial request
           messages,
           tools: AGENT_TOOLS,
           tool_choice: 'auto',
