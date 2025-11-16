@@ -239,6 +239,8 @@ function CameraController({
   const { camera } = useThree();
   const controlsRef = useRef<any>();
   const [isResetting, setIsResetting] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const animationStartTimeRef = useRef<number>(0);
   
   // Default overview camera position
   const defaultCameraPosition = new THREE.Vector3(38, 18, -11);
@@ -246,17 +248,28 @@ function CameraController({
 
   // Track when enabled changes from true to false to trigger reset
   const prevEnabledRef = useRef(enabled);
+  const prevTargetRef = useRef(targetPosition);
   
   useEffect(() => {
     if (prevEnabledRef.current === true && enabled === false) {
       // Room was just deselected, trigger reset
       setIsResetting(true);
+      setIsAnimating(false);
+    } else if (enabled && targetPosition && targetPosition !== prevTargetRef.current) {
+      // New room selected, start animation
+      setIsAnimating(true);
+      animationStartTimeRef.current = Date.now();
     }
     prevEnabledRef.current = enabled;
-  }, [enabled]);
+    prevTargetRef.current = targetPosition;
+  }, [enabled, targetPosition]);
 
   useFrame(() => {
-    if (enabled && targetPosition && controlsRef.current) {
+    // Only animate camera for a short duration (1.5 seconds), then allow free movement
+    const animationDuration = 1500;
+    const elapsed = Date.now() - animationStartTimeRef.current;
+    
+    if (isAnimating && enabled && targetPosition && controlsRef.current && elapsed < animationDuration) {
       // Calculate camera position - offset from room
       const offsetDistance = 15;
       const targetCamera = new THREE.Vector3(
@@ -272,9 +285,9 @@ function CameraController({
       const target = new THREE.Vector3(...targetPosition);
       controlsRef.current.target.lerp(target, 0.05);
       controlsRef.current.update();
-      
-      // Clear resetting flag
-      setIsResetting(false);
+    } else if (isAnimating && elapsed >= animationDuration) {
+      // Animation complete, allow free camera control
+      setIsAnimating(false);
     } else if (isResetting && controlsRef.current) {
       // Reset camera to overview position
       camera.position.lerp(defaultCameraPosition, 0.05);
