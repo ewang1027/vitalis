@@ -25,6 +25,11 @@ import {
 const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
+// Validate API key on module load
+if (!OPENROUTER_API_KEY) {
+  console.error('❌ OPENROUTER_API_KEY is not set! Please add it to your .env file.');
+}
+
 /**
  * Retry fetch with exponential backoff for server errors
  */
@@ -38,19 +43,33 @@ async function fetchWithRetry(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
+      console.log(`🔄 [FETCH_RETRY] Attempt ${attempt + 1}/${maxRetries + 1}`);
+
       const response = await fetch(url, options);
 
-      // If successful or client error (4xx), return immediately
-      if (response.ok || (response.status >= 400 && response.status < 500)) {
+      console.log(`📡 [FETCH_RETRY] Response: ${response.status} ${response.statusText}`);
+
+      // If successful, return immediately
+      if (response.ok) {
+        console.log('✅ [FETCH_RETRY] Request successful');
+        return response;
+      }
+
+      // For client errors (4xx), don't retry - return for error handling
+      if (response.status >= 400 && response.status < 500) {
+        console.warn(`⚠️ [FETCH_RETRY] Client error ${response.status}, not retrying`);
         return response;
       }
 
       // For server errors (5xx), retry
       if (response.status >= 500) {
-        const errorText = await response.text();
+        // Clone response before reading to avoid consuming body
+        const errorText = await response.clone().text();
         lastError = new Error(
-          `OpenRouter API error (${response.status}): ${response.statusText}. ${errorText}`
+          `OpenRouter API error (${response.status}): ${response.statusText}. ${errorText.substring(0, 200)}`
         );
+
+        console.error(`❌ [FETCH_RETRY] Server error:`, lastError.message);
 
         // Don't retry on last attempt
         if (attempt === maxRetries) {
@@ -60,7 +79,7 @@ async function fetchWithRetry(
         // Calculate delay with exponential backoff
         const delay = baseDelay * Math.pow(2, attempt);
         console.warn(
-          `OpenRouter API returned ${response.status}. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`
+          `⏳ [FETCH_RETRY] Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`
         );
 
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -69,15 +88,17 @@ async function fetchWithRetry(
 
       return response;
     } catch (error) {
-      // Network errors
+      console.error(`❌ [FETCH_RETRY] Caught error:`, error);
+
+      // Network errors or fetch failures
       if (attempt === maxRetries) {
+        console.error('❌ [FETCH_RETRY] Max retries reached, throwing error');
         throw error;
       }
 
       const delay = baseDelay * Math.pow(2, attempt);
       console.warn(
-        `Network error. Retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`,
-        error
+        `⏳ [FETCH_RETRY] Network error, retrying in ${delay}ms... (Attempt ${attempt + 1}/${maxRetries})`
       );
 
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -611,13 +632,39 @@ Current date: ${new Date().toLocaleDateString()}`,
   const toolResults: any[] = [];
   let assistantMessage = '';
 
+  // Validate API key before making request
+  if (!OPENROUTER_API_KEY) {
+    const errorMsg = 'OpenRouter API key is not configured. Please add VITE_OPENROUTER_API_KEY to your .env file.';
+    console.error('❌', errorMsg);
+    throw new Error(errorMsg);
+  }
+
   try {
+    console.log('🚀 [AGENT] Starting agent request');
+    console.log('📝 [AGENT] Message:', userMessage);
+    console.log('📚 [AGENT] Conversation history length:', conversationHistory.length);
+    console.log('🔑 [AGENT] API key present:', OPENROUTER_API_KEY ? 'Yes' : 'No');
+    console.log('🔑 [AGENT] API key starts with:', OPENROUTER_API_KEY?.substring(0, 15) + '...');
+
     onUpdate?.({
       type: 'progress',
       content: 'Processing your request...',
     });
 
     // Initial API call with retry logic
+    const requestBody = {
+      model: 'anthropic/claude-3.5-sonnet',
+      messages,
+      tools: AGENT_TOOLS,
+      tool_choice: 'auto',
+    };
+
+    console.log('📤 [AGENT] Request body:', {
+      model: requestBody.model,
+      messageCount: requestBody.messages.length,
+      toolCount: requestBody.tools.length,
+    });
+
     let response = await fetchWithRetry(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
@@ -626,32 +673,47 @@ Current date: ${new Date().toLocaleDateString()}`,
         'HTTP-Referer': window.location.origin,
         'X-Title': 'Hospital Management System',
       },
-      body: JSON.stringify({
-        model: 'anthropic/claude-3.5-sonnet',
-        messages,
-        tools: AGENT_TOOLS,
-        tool_choice: 'auto',
-      }),
+      body: JSON.stringify(requestBody),
     });
+
+    console.log('📥 [AGENT] Response status:', response.status, response.statusText);
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error('❌ [AGENT] Error response:', errorText);
       throw new Error(`OpenRouter API error (${response.status}): ${response.statusText}. ${errorText}`);
     }
 
     let data: any;
     try {
       data = await response.json();
+      console.log('✅ [AGENT] Response parsed successfully');
     } catch (jsonError) {
-      console.error('Failed to parse API response as JSON:', jsonError);
+      console.error('❌ [AGENT] Failed to parse API response as JSON:', jsonError);
+      const responseText = await response.text();
+      console.error('Raw response:', responseText);
       throw new Error(`Invalid JSON response from API: ${jsonError instanceof Error ? jsonError.message : 'JSON parse error'}`);
     }
 
+    // Log response structure for debugging
+    console.log('📊 [AGENT] Response structure:', {
+      hasChoices: !!data.choices,
+      choicesLength: data.choices?.length,
+      hasFirstChoice: !!data.choices?.[0],
+      hasMessage: !!data.choices?.[0]?.message,
+    });
+
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      console.error('❌ [AGENT] Invalid response structure:', data);
       throw new Error('Invalid API response structure: missing message data');
     }
 
     let assistantMsg = data.choices[0].message;
+    console.log('💬 [AGENT] Assistant message received:', {
+      hasContent: !!assistantMsg.content,
+      hasToolCalls: !!assistantMsg.tool_calls,
+      toolCallsCount: assistantMsg.tool_calls?.length || 0,
+    });
 
     // Handle tool calls in a loop (agent might make multiple tool calls)
     let iterationCount = 0;
