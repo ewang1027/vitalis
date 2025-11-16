@@ -170,7 +170,8 @@ isSelected,
 onClick,
 roomData,
 onEnterRoom,
-onClosePopup
+onClosePopup,
+rotation = 0
 }: {
 position: [number, number, number];
 size: [number, number, number];
@@ -182,6 +183,7 @@ onClick: () => void;
 roomData?: Room;
 onEnterRoom?: (roomId: string) => void;
 onClosePopup?: () => void;
+rotation?: number;
 }) {
 const groupRef = useRef<THREE.Group>(null);
 const [hovered, setHovered] = useState(false);
@@ -220,7 +222,7 @@ document.body.style.cursor = 'auto';
 };
 
 return (
-<group ref={groupRef} position={position}>
+<group ref={groupRef} position={position} rotation={[0, rotation, 0]}>
 {/* Floor */}
 <mesh position={[0, 0.02, 0]} receiveShadow>
 <boxGeometry args={[size[0], 0.04, size[2]]} />
@@ -1078,6 +1080,33 @@ lookAt: [number, number, number];
 // Pathfinding state - stores the current path to display
 const [currentPath, setCurrentPath] = useState<[number, number, number][]>([]);
 
+// Helper function to get room rotation
+function getRoomRotation(room: Room): number {
+const roomId = room.id?.toLowerCase() || '';
+const roomName = room.room_name?.toLowerCase() || '';
+
+// Rooms to flip 180 degrees (Math.PI radians)
+const flip180 = roomName.includes('mri') ||
+       roomId === 'c1b2c3d4-e5f6-4789-a012-000000000001' || // Room 101
+       roomId === 'c1b2c3d4-e5f6-4789-a012-000000000002' || // Room 102
+       roomId === '6e6f7cab-8ba0-4b72-8f73-702f954aef36' || // Equipment Storage
+       roomId === 'c2e186e1-89a6-4e1c-95a8-c2f3807c7f6c';   // Nurse Station 3
+
+// Rooms to rotate 90 degrees CCW (counter-clockwise = Math.PI/2 radians)
+const rotate90CCW =
+       roomId === 'c1b2c3d4-e5f6-4789-a012-000000000003' || // Room 103
+       roomId === 'c1b2c3d4-e5f6-4789-a012-000000000004' || // Room 104
+       roomId === 'c1b2c3d4-e5f6-4789-a012-000000000005' || // Room 105
+       roomId === 'c1b2c3d4-e5f6-4789-a012-000000000006' || // Room 106
+       roomId === 'a4276cf3-ff98-47a2-9827-f1d1fd9aaaa3' || // Laboratory
+       roomId === 'aa49012d-b485-4c69-b489-7e3e00f3d131' || // Operating Theater 1
+       roomId === '6d86cd56-5f97-4f9d-ba89-b1982acd04b5';   // X-Ray Room
+
+if (flip180) return Math.PI;      // 180 degrees
+if (rotate90CCW) return Math.PI / 2; // 90 degrees CCW
+return 0;                          // No rotation
+}
+
 // Sort rooms and transform into 3D positions (memoized to prevent infinite loops)
 const room3DData = useMemo(() => {
 const sortedRooms = [...rooms].sort((a, b) => {
@@ -1090,12 +1119,14 @@ return 0;
 
 return sortedRooms.map((room, index) => {
 const position: [number, number, number] = getDefaultPosition(index);
+const rotation = getRoomRotation(room);
 return {
 id: room.id,
 position,
 size: [3.2, 1.8, 3.2] as [number, number, number],
 label: room.room_name || room.room_number,
-roomData: room
+roomData: room,
+rotation
 };
 });
 }, [rooms]);
@@ -1265,6 +1296,7 @@ onClick={() => onRoomSelect(room.id)}
 roomData={room.roomData}
 onEnterRoom={onEnterRoom}
 onClosePopup={handleClosePopup}
+rotation={room.rotation}
 />
 ))}
 

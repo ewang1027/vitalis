@@ -26,19 +26,11 @@ export function PatientVitalsDashboard() {
 
   // Reload page after adding patient for now (simple solution)
   const handlePatientAdded = () => {
-    console.log('Patient added, reloading page...');
     // Simple solution: reload the page to get fresh data
     setTimeout(() => {
       window.location.reload();
     }, 500);
   };
-
-  console.log('PatientVitalsDashboard:', {
-    patientsCount: patientsData.length,
-    loading: patientsLoading,
-    error: patientsError,
-    patients: patientsData
-  });
 
   // Filter and sort patients
   const sortedPatientsData = useMemo(() => {
