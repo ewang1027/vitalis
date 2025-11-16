@@ -238,6 +238,22 @@ function CameraController({
 }) {
   const { camera } = useThree();
   const controlsRef = useRef<any>();
+  const [isResetting, setIsResetting] = useState(false);
+  
+  // Default overview camera position
+  const defaultCameraPosition = new THREE.Vector3(38, 18, -11);
+  const defaultTargetPosition = new THREE.Vector3(0, 0, 0);
+
+  // Track when enabled changes from true to false to trigger reset
+  const prevEnabledRef = useRef(enabled);
+  
+  useEffect(() => {
+    if (prevEnabledRef.current === true && enabled === false) {
+      // Room was just deselected, trigger reset
+      setIsResetting(true);
+    }
+    prevEnabledRef.current = enabled;
+  }, [enabled]);
 
   useFrame(() => {
     if (enabled && targetPosition && controlsRef.current) {
@@ -256,6 +272,20 @@ function CameraController({
       const target = new THREE.Vector3(...targetPosition);
       controlsRef.current.target.lerp(target, 0.05);
       controlsRef.current.update();
+      
+      // Clear resetting flag
+      setIsResetting(false);
+    } else if (isResetting && controlsRef.current) {
+      // Reset camera to overview position
+      camera.position.lerp(defaultCameraPosition, 0.05);
+      controlsRef.current.target.lerp(defaultTargetPosition, 0.05);
+      controlsRef.current.update();
+      
+      // Check if we're close enough to default position to stop resetting
+      const distanceToDefault = camera.position.distanceTo(defaultCameraPosition);
+      if (distanceToDefault < 0.5) {
+        setIsResetting(false);
+      }
     }
   });
 
