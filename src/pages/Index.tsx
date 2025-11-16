@@ -159,7 +159,7 @@ const Index = ({ onLogout }: IndexProps) => {
 
             {/* ESP32 Hardware Monitor Widget - Only show when not in room detail view */}
             {!roomDetailViewId && (
-              <div style={{ position: 'absolute', bottom: '50px', right: '16px', zIndex: 100 }}>
+              <div style={{ position: 'absolute', bottom: '50px', right: '16px', zIndex: 10 }}>
                 <ESP32Widget />
               </div>
             )}

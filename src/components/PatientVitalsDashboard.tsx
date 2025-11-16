@@ -23,6 +23,15 @@ export function PatientVitalsDashboard() {
   const [sortBy, setSortBy] = useState<string>('severity');
   const [addPatientOpen, setAddPatientOpen] = useState(false);
 
+  // Reload page after adding patient for now (simple solution)
+  const handlePatientAdded = () => {
+    console.log('Patient added, reloading page...');
+    // Simple solution: reload the page to get fresh data
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
   console.log('PatientVitalsDashboard:', {
     patientsCount: patientsData.length,
     loading: patientsLoading,
@@ -116,7 +125,7 @@ export function PatientVitalsDashboard() {
         <AddPatientDialog
           open={addPatientOpen}
           onOpenChange={setAddPatientOpen}
-          onPatientAdded={refetch}
+          onPatientAdded={handlePatientAdded}
         />
       </div>
     );
@@ -202,7 +211,7 @@ export function PatientVitalsDashboard() {
       <AddPatientDialog
         open={addPatientOpen}
         onOpenChange={setAddPatientOpen}
-        onPatientAdded={refetch}
+        onPatientAdded={handlePatientAdded}
       />
     </div>
   );
