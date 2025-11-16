@@ -8,6 +8,13 @@ import { Loader2, Users } from 'lucide-react';
 export function PatientVitalsDashboard() {
   const { patientsData, loading: patientsLoading, error: patientsError } = usePatientsDashboard();
 
+  console.log('PatientVitalsDashboard:', {
+    patientsCount: patientsData.length,
+    loading: patientsLoading,
+    error: patientsError,
+    patients: patientsData
+  });
+
   // Extract patient IDs and severities for real-time vitals
   const patientIds = useMemo(() => patientsData.map(p => p.patient.id), [patientsData]);
   const patientSeverities = useMemo(() => {

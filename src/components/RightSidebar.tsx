@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutDashboard } from 'lucide-react';
 import { WardMap } from './WardMap';
 import { RoomDetails } from './RoomDetails';
 import { TaskQueue } from './TaskQueue';
@@ -84,12 +84,40 @@ export function RightSidebar({
     );
   }
 
+  // Always show dashboard
   return (
     <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col min-w-0">
       {/* Collapse Button */}
       <div className="border-b border-border p-3 flex items-center justify-between min-w-0">
+        <h3 className="text-sm font-bold text-text-primary truncate min-w-0 flex items-center gap-2">
+          <LayoutDashboard className="h-4 w-4" />
+          Patient Dashboard
+        </h3>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => handleCollapse(true)}
+          className="text-text-tertiary hover:text-text-primary flex-shrink-0"
+          title="Collapse sidebar"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+        </Button>
+      </div>
+
+      {/* Content - Always Dashboard */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+        <PatientVitalsDashboard />
+      </div>
+    </div>
+  );
+
+  // Old tab-based rendering (keeping for reference but not used)
+  const oldRender = (
+    <div className="w-full h-full border-l border-border bg-bg-secondary flex flex-col min-w-0">
+      {/* Collapse Button */}
+      <div className="border-b border-border p-3 flex items-center justify-between min-w-0">
         <h3 className="text-sm font-bold text-text-primary truncate min-w-0">
-          {activeTab === 'ask' ? 'Ward Overview' : activeTab === 'dashboard' ? 'Patient Dashboard' : 'Details'}
+          {activeTab === 'ask' ? 'Ward Overview' : 'Details'}
         </h3>
         <Button
           variant="ghost"
