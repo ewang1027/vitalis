@@ -1,4 +1,4 @@
-import React, { useRef, useState, Suspense, useMemo } from 'react';
+import React, { useRef, useState, Suspense, useMemo, useEffect } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Text } from '@react-three/drei';
 import * as THREE from 'three';
@@ -201,6 +201,48 @@ function HelpDesk({ position }: { position: [number, number, number] }) {
         HELP DESK
       </Text>
     </group>
+  );
+}
+
+// Camera controller to focus on selected room
+function CameraController({
+  targetPosition,
+  enabled
+}: {
+  targetPosition: [number, number, number] | null;
+  enabled: boolean;
+}) {
+  const { camera } = useThree();
+  const controlsRef = useRef<any>();
+
+  useFrame(() => {
+    if (enabled && targetPosition && controlsRef.current) {
+      // Calculate camera position - offset from room
+      const offsetDistance = 15;
+      const targetCamera = new THREE.Vector3(
+        targetPosition[0] + offsetDistance,
+        targetPosition[1] + 10,
+        targetPosition[2] + offsetDistance
+      );
+
+      // Smoothly move camera
+      camera.position.lerp(targetCamera, 0.05);
+
+      // Update controls target to look at the room
+      const target = new THREE.Vector3(...targetPosition);
+      controlsRef.current.target.lerp(target, 0.05);
+      controlsRef.current.update();
+    }
+  });
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      enableDamping
+      dampingFactor={0.05}
+      minDistance={10}
+      maxDistance={50}
+    />
   );
 }
 
@@ -473,6 +515,34 @@ function createHospitalLayout(rooms: Room[]): {
   return { roomLayouts, hallways, floorSections, walls };
 }
 
+// Component to track 3D position and update popup position
+function PopupPositionTracker({
+  position,
+  onPositionUpdate
+}: {
+  position: [number, number, number] | null;
+  onPositionUpdate: (screenPos: { x: number; y: number } | null) => void;
+}) {
+  const { camera, size } = useThree();
+
+  useFrame(() => {
+    if (position) {
+      const vector = new THREE.Vector3(...position);
+      vector.y += 3; // Position above the room
+      vector.project(camera);
+
+      const x = (vector.x * 0.5 + 0.5) * size.width;
+      const y = (-(vector.y * 0.5) + 0.5) * size.height;
+
+      onPositionUpdate({ x, y });
+    } else {
+      onPositionUpdate(null);
+    }
+  });
+
+  return null;
+}
+
 export function Hospital3DMap({
   rooms,
   equipment,
@@ -480,6 +550,8 @@ export function Hospital3DMap({
   selectedRoomId
 }: Hospital3DMapProps) {
   const { roomLayouts, hallways, floorSections, walls } = useMemo(() => createHospitalLayout(rooms), [rooms]);
+  const [showPopup, setShowPopup] = useState(false);
+  const [popupPosition, setPopupPosition] = useState<{ x: number; y: number } | null>(null);
 
   const getRoomStatus = (roomId: string): 'ready' | 'needs-attention' | 'occupied' => {
     const room = rooms.find(r => r.id === roomId);
@@ -493,6 +565,13 @@ export function Hospital3DMap({
     return 'ready';
   };
 
+  const selectedRoom = selectedRoomId ? rooms.find(r => r.id === selectedRoomId) : null;
+  const selectedRoomLayout = selectedRoomId ? roomLayouts.get(selectedRoomId) : null;
+
+  useEffect(() => {
+    setShowPopup(!!selectedRoomId);
+  }, [selectedRoomId]);
+
   return (
     <div style={{
       width: '100%',
@@ -501,15 +580,18 @@ export function Hospital3DMap({
       background: '#4b5563'
     }}>
       <Suspense fallback={<div>Loading...</div>}>
-        <Canvas shadows camera={{ position: [20, 15, 20], fov: 60 }}>
+        <Canvas shadows camera={{ position: [38, 18, -11], fov: 60 }}>
           <ambientLight intensity={0.7} />
           <directionalLight position={[10, 20, 10]} intensity={1.3} castShadow />
 
-          <OrbitControls
-            enableDamping
-            dampingFactor={0.05}
-            minDistance={10}
-            maxDistance={50}
+          <CameraController
+            targetPosition={selectedRoomLayout?.position || null}
+            enabled={!!selectedRoomId}
+          />
+
+          <PopupPositionTracker
+            position={selectedRoomLayout?.position || null}
+            onPositionUpdate={setPopupPosition}
           />
 
           {/* Floor sections */}
@@ -591,6 +673,7 @@ export function Hospital3DMap({
       }}>
         Drag to rotate • Scroll to zoom • Click rooms
       </div>
+
     </div>
   );
 }
