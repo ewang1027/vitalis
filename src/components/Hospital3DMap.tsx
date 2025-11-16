@@ -168,40 +168,59 @@ function PerimeterWall({
   );
 }
 
-// Central Help Desk
-function HelpDesk({ position }: { position: [number, number, number] }) {
+// Central Command Station
+function CentralCommandStation({ position }: { position: [number, number, number] }) {
   return (
     <group position={position}>
-      {/* Desk base */}
-      <mesh position={[0, 0.5, 0]} castShadow>
-        <cylinderGeometry args={[2, 2, 1, 8]} />
-        <meshStandardMaterial color="#d1d5db" roughness={0.5} />
+      {/* Base platform */}
+      <mesh position={[0, 0.05, 0]} castShadow>
+        <cylinderGeometry args={[3, 3, 0.1, 8]} />
+        <meshStandardMaterial color="#374151" roughness={0.3} />
       </mesh>
 
-      {/* Desk top */}
-      <mesh position={[0, 1.05, 0]} castShadow>
-        <cylinderGeometry args={[2.2, 2.2, 0.1, 8]} />
-        <meshStandardMaterial color="#e5e7eb" roughness={0.4} />
+      {/* Main console */}
+      <mesh position={[0, 0.6, 0]} castShadow>
+        <cylinderGeometry args={[2.5, 2.5, 1, 8]} />
+        <meshStandardMaterial color="#1f2937" roughness={0.4} />
       </mesh>
 
-      {/* Sign above */}
-      <mesh position={[0, 2.5, 0]}>
-        <cylinderGeometry args={[1.5, 1.5, 0.2, 8]} />
+      {/* Console top surface */}
+      <mesh position={[0, 1.15, 0]} castShadow>
+        <cylinderGeometry args={[2.6, 2.6, 0.1, 8]} />
+        <meshStandardMaterial color="#111827" roughness={0.3} />
+      </mesh>
+
+      {/* Holographic display column */}
+      <mesh position={[0, 2.2, 0]}>
+        <cylinderGeometry args={[0.3, 0.3, 2, 16]} />
         <meshStandardMaterial
-          color="#22c55e"
-          emissive="#22c55e"
-          emissiveIntensity={0.3}
+          color="#3b82f6"
+          emissive="#3b82f6"
+          emissiveIntensity={0.5}
+          transparent
+          opacity={0.7}
         />
       </mesh>
 
+      {/* Display screen ring */}
+      <mesh position={[0, 3, 0]}>
+        <torusGeometry args={[1.8, 0.15, 16, 32]} />
+        <meshStandardMaterial
+          color="#60a5fa"
+          emissive="#60a5fa"
+          emissiveIntensity={0.6}
+        />
+      </mesh>
+
+      {/* Label */}
       <Text
-        position={[0, 2.5, 0.15]}
-        fontSize={0.35}
+        position={[0, 3.8, 0]}
+        fontSize={0.4}
         color="#ffffff"
         anchorX="center"
         anchorY="middle"
       >
-        HELP DESK
+        COMMAND CENTER
       </Text>
     </group>
   );
@@ -276,7 +295,7 @@ function Hallway({
   );
 }
 
-// Hospital layout with central desk and wings
+// Hospital layout with rectangular perimeter and cross-hallways
 function createHospitalLayout(rooms: Room[]): {
   roomLayouts: Map<string, {
     id: string;
@@ -293,229 +312,203 @@ function createHospitalLayout(rooms: Room[]): {
   const floorSections: Array<{ position: [number, number, number]; size: [number, number] }> = [];
   const walls: Array<{ position: [number, number, number]; width: number; rotation: number; label: string }> = [];
 
-  const roomsPerWing = Math.ceil(rooms.length / 4);
-  const roomSpacing = 6; // Space between rooms in a wing
-  const wingDistance = 8; // Distance from center to start of wing
+  // Layout parameters
+  const perimeterWidth = 50;
+  const perimeterHeight = 40;
+  const hallwayOffset = 5; // Distance from hallway centerline to room
 
-  // Define 4 wings (North, East, South, West)
-  const wings = [
-    { name: 'North', direction: [0, 0, -1], start: [0, 0, -wingDistance] }, // North
-    { name: 'East', direction: [1, 0, 0], start: [wingDistance, 0, 0] },   // East
-    { name: 'South', direction: [0, 0, 1], start: [0, 0, wingDistance] },  // South
-    { name: 'West', direction: [-1, 0, 0], start: [-wingDistance, 0, 0] }, // West
+  // Define 6 hallway segments: 4 perimeter + 2 cross-hallways
+  const hallwaySegments = [
+    // Perimeter hallways
+    { name: "North", start: [-perimeterWidth / 2, 0.1, -perimeterHeight / 2], end: [perimeterWidth / 2, 0.1, -perimeterHeight / 2] },
+    { name: "East", start: [perimeterWidth / 2, 0.1, -perimeterHeight / 2], end: [perimeterWidth / 2, 0.1, perimeterHeight / 2] },
+    { name: "South", start: [perimeterWidth / 2, 0.1, perimeterHeight / 2], end: [-perimeterWidth / 2, 0.1, perimeterHeight / 2] },
+    { name: "West", start: [-perimeterWidth / 2, 0.1, perimeterHeight / 2], end: [-perimeterWidth / 2, 0.1, -perimeterHeight / 2] },
+    // Cross hallways
+    { name: "Horizontal", start: [-perimeterWidth / 2, 0.1, 0], end: [perimeterWidth / 2, 0.1, 0] },
+    { name: "Vertical", start: [0, 0.1, -perimeterHeight / 2], end: [0, 0.1, perimeterHeight / 2] },
   ];
 
-  const positions: Array<[number, number, number]> = [];
-  let roomIndex = 0;
-
-  wings.forEach((wing, wingIdx) => {
-    const wingRooms = rooms.slice(roomIndex, Math.min(roomIndex + roomsPerWing, rooms.length));
-    const centerPoint: [number, number, number] = [wing.start[0], wing.start[1], wing.start[2]];
-
-    // Create hallway from center to wing entrance
-    hallways.push({
-      start: [0, 0, 0],
-      end: centerPoint
-    });
-
-    wingRooms.forEach((room, idx) => {
-      // Alternate rooms on left and right sides of the corridor
-      const side = idx % 2 === 0 ? 1 : -1;
-      const distanceAlongWing = Math.floor(idx / 2) * roomSpacing;
-
-      let position: [number, number, number];
-
-      // Calculate position based on wing direction
-      if (wing.name === 'North' || wing.name === 'South') {
-        position = [
-          wing.start[0] + side * 5,
-          0,
-          wing.start[2] + wing.direction[2] * distanceAlongWing
-        ];
-      } else {
-        position = [
-          wing.start[0] + wing.direction[0] * distanceAlongWing,
-          0,
-          wing.start[2] + side * 5
-        ];
-      }
-
-      positions.push(position);
-
-      // Calculate label rotation to face outward
-      let labelRotation = 0;
-      if (wing.name === 'North') {
-        labelRotation = side === 1 ? -Math.PI / 2 : Math.PI / 2; // East rooms face east, West rooms face west
-      } else if (wing.name === 'South') {
-        labelRotation = side === 1 ? Math.PI / 2 : -Math.PI / 2; // East rooms face east, West rooms face west
-      } else if (wing.name === 'East') {
-        labelRotation = side === 1 ? Math.PI : 0; // South rooms face south, North rooms face north
-      } else if (wing.name === 'West') {
-        labelRotation = side === 1 ? 0 : Math.PI; // North rooms face north, South rooms face south
-      }
-
-      roomLayouts.set(room.id, {
-        id: room.id,
-        label: room.room_name || room.room_number || `Room ${roomIndex + idx + 1}`,
-        position,
-        labelRotation,
-      });
-
-      // Connect room to corridor
-      if (wing.name === 'North' || wing.name === 'South') {
-        hallways.push({
-          start: [wing.start[0], 0, wing.start[2] + wing.direction[2] * distanceAlongWing],
-          end: position
-        });
-      } else {
-        hallways.push({
-          start: [wing.start[0] + wing.direction[0] * distanceAlongWing, 0, wing.start[2]],
-          end: position
-        });
-      }
-
-      // Create corridor hallways along the wing
-      if (idx > 1) {
-        const prevDistanceAlongWing = Math.floor((idx - 2) / 2) * roomSpacing;
-        if (wing.name === 'North' || wing.name === 'South') {
-          hallways.push({
-            start: [wing.start[0], 0, wing.start[2] + wing.direction[2] * prevDistanceAlongWing],
-            end: [wing.start[0], 0, wing.start[2] + wing.direction[2] * distanceAlongWing]
-          });
-        } else {
-          hallways.push({
-            start: [wing.start[0] + wing.direction[0] * prevDistanceAlongWing, 0, wing.start[2]],
-            end: [wing.start[0] + wing.direction[0] * distanceAlongWing, 0, wing.start[2]]
-          });
-        }
-      }
-    });
-
-    roomIndex += wingRooms.length;
+  hallwaySegments.forEach(segment => {
+    hallways.push({ start: segment.start as [number, number, number], end: segment.end as [number, number, number] });
   });
 
-  // Create continuous floor for each wing based on actual room extent
-  wings.forEach((wing, wingIdx) => {
-    const startIdx = wingIdx * roomsPerWing;
-    const endIdx = Math.min(startIdx + roomsPerWing, rooms.length);
-    const wingPositions = positions.slice(startIdx, endIdx);
+  // Floor section
+  const floorWidth = 100;
+  const floorDepth = 100;
+  floorSections.push({
+    position: [0, -0.1, 0],
+    size: [floorWidth, floorDepth],
+  });
 
-    if (wingPositions.length > 0) {
-      // Get bounds of rooms in this wing
-      const xPositions = wingPositions.map(p => p[0]);
-      const zPositions = wingPositions.map(p => p[2]);
-      const minX = Math.min(...xPositions);
-      const maxX = Math.max(...xPositions);
-      const minZ = Math.min(...zPositions);
-      const maxZ = Math.max(...zPositions);
+  // Categorize rooms by type
+  const specialtyRooms: Room[] = [];
+  const nurseStations: Room[] = [];
+  const equipmentRooms: Room[] = [];
+  const patientRooms: Room[] = [];
 
-      // Create floor section for entire wing area
-      const centerX = (minX + maxX) / 2;
-      const centerZ = (minZ + maxZ) / 2;
-      const width = (maxX - minX) + 5;
-      const depth = (maxZ - minZ) + 5;
+  rooms.forEach(room => {
+    const name = (room.room_name || room.room_number || '').toLowerCase();
 
-      floorSections.push({
-        position: [centerX, -1.1, centerZ],
-        size: [width, depth]
-      });
-
-      // Add only exterior walls (not walls facing the center)
-      const wallHeight = 1.5;
-
-      if (wing.name === 'North') {
-        // North wing: keep north, east, west walls (remove south wall facing center)
-        walls.push({
-          position: [centerX, wallHeight / 2, centerZ - depth / 2],
-          width: width,
-          rotation: 0,
-          label: 'North Wing - Far Wall'
-        });
-        walls.push({
-          position: [centerX + width / 2, wallHeight / 2, centerZ - depth / 4],
-          width: depth / 2,
-          rotation: Math.PI / 2,
-          label: 'North Wing - East Side'
-        });
-        walls.push({
-          position: [centerX - width / 2, wallHeight / 2, centerZ - depth / 4],
-          width: depth * 0.7,
-          rotation: Math.PI / 2,
-          label: 'North Wing - West Side'
-        });
-      } else if (wing.name === 'South') {
-        // South wing: keep south, east, west walls (remove north wall facing center)
-        walls.push({
-          position: [centerX, wallHeight / 2, centerZ + depth / 2],
-          width: width,
-          rotation: 0,
-          label: 'South Wing - Far Wall'
-        });
-        walls.push({
-          position: [centerX + width / 2, wallHeight / 2, centerZ + depth / 4],
-          width: depth / 2,
-          rotation: Math.PI / 2,
-          label: 'South Wing - East Side'
-        });
-        // Extended West Side wall (80%)
-        walls.push({
-          position: [centerX - width / 2, wallHeight / 2, centerZ + depth / 5],
-          width: depth * 0.7,
-          rotation: Math.PI / 2,
-          label: 'South Wing - West Side'
-        });
-      } else if (wing.name === 'East') {
-        // East wing: keep east, north, south walls (remove west wall facing center)
-        walls.push({
-          position: [centerX + width / 2, wallHeight / 2, centerZ],
-          width: depth,
-          rotation: Math.PI / 2,
-          label: 'East Wing - Far Wall'
-        });
-        walls.push({
-          position: [centerX + width / 4, wallHeight / 2, centerZ - depth / 2],
-          width: width / 2,
-          rotation: 0,
-          label: 'East Wing - North Side'
-        });
-        walls.push({
-          position: [centerX + width / 4, wallHeight / 2, centerZ + depth / 2],
-          width: width / 2,
-          rotation: 0,
-          label: 'East Wing - South Side'
-        });
-      } else if (wing.name === 'West') {
-        // West wing: keep west, north, south walls (remove east wall facing center)
-        walls.push({
-          position: [centerX - width / 2, wallHeight / 2, centerZ],
-          width: depth,
-          rotation: Math.PI / 2,
-          label: 'West Wing - Far Wall'
-        });
-        walls.push({
-          position: [centerX - width / 4, wallHeight / 2, centerZ - depth / 2],
-          width: width / 2,
-          rotation: 0,
-          label: 'West Wing - North Side'
-        });
-        walls.push({
-          position: [centerX - width / 4, wallHeight / 2, centerZ + depth / 2],
-          width: width / 2,
-          rotation: 0,
-          label: 'West Wing - South Side'
-        });
-      }
+    if (name.includes('mri') || name.includes('x-ray') || name.includes('xray') ||
+        name.includes('ct') || name.includes('scan') || name.includes('imaging') ||
+        name.includes('radiology')) {
+      specialtyRooms.push(room);
+    } else if (name.includes('nurse') || name.includes('station')) {
+      nurseStations.push(room);
+    } else if (name.includes('equipment') || name.includes('supply') || name.includes('storage')) {
+      equipmentRooms.push(room);
+    } else {
+      patientRooms.push(room);
     }
   });
 
-  // Add central floor section around help desk (no walls)
-  const centralSize = 20;
-  floorSections.push({
-    position: [0, -1.1, 0],
-    size: [centralSize, centralSize]
+  // Place specialty rooms at corners
+  const corners = [
+    { pos: [-perimeterWidth / 2 + 3, 0, -perimeterHeight / 2 + 3], rot: -Math.PI * 3 / 4 }, // NW
+    { pos: [perimeterWidth / 2 - 3, 0, -perimeterHeight / 2 + 3], rot: -Math.PI / 4 },      // NE
+    { pos: [perimeterWidth / 2 - 3, 0, perimeterHeight / 2 - 3], rot: Math.PI / 4 },        // SE
+    { pos: [-perimeterWidth / 2 + 3, 0, perimeterHeight / 2 - 3], rot: Math.PI * 3 / 4 },   // SW
+  ];
+
+  specialtyRooms.forEach((room, idx) => {
+    if (idx < corners.length) {
+      const corner = corners[idx];
+      roomLayouts.set(room.id, {
+        id: room.id,
+        label: room.room_name || room.room_number || `Room ${room.id}`,
+        position: corner.pos as [number, number, number],
+        labelRotation: corner.rot,
+      });
+    }
   });
 
-  return { roomLayouts, hallways, floorSections, walls };
+  // Distribute nurse stations (1 per hallway)
+  const nurseStationPositions = [
+    { pos: [0, 0, -perimeterHeight / 2 - hallwayOffset], rot: 0 },           // North
+    { pos: [perimeterWidth / 2 + hallwayOffset, 0, 0], rot: Math.PI / 2 },   // East
+    { pos: [0, 0, perimeterHeight / 2 + hallwayOffset], rot: Math.PI },      // South
+    { pos: [-perimeterWidth / 2 - hallwayOffset, 0, 0], rot: -Math.PI / 2 }, // West
+    { pos: [-perimeterWidth / 4, 0, hallwayOffset], rot: Math.PI },          // Horizontal hallway
+    { pos: [-hallwayOffset, 0, perimeterHeight / 4], rot: -Math.PI / 2 },    // Vertical hallway
+  ];
+
+  nurseStations.forEach((room, idx) => {
+    if (idx < nurseStationPositions.length) {
+      const pos = nurseStationPositions[idx];
+      roomLayouts.set(room.id, {
+        id: room.id,
+        label: room.room_name || room.room_number || `Room ${room.id}`,
+        position: pos.pos as [number, number, number],
+        labelRotation: pos.rot,
+      });
+    }
+  });
+
+  // Distribute equipment rooms (1 per hallway)
+  const equipmentPositions = [
+    { pos: [perimeterWidth / 4, 0, -perimeterHeight / 2 - hallwayOffset], rot: 0 },           // North
+    { pos: [perimeterWidth / 2 + hallwayOffset, 0, perimeterHeight / 4], rot: Math.PI / 2 },  // East
+    { pos: [-perimeterWidth / 4, 0, perimeterHeight / 2 + hallwayOffset], rot: Math.PI },     // South
+    { pos: [-perimeterWidth / 2 - hallwayOffset, 0, -perimeterHeight / 4], rot: -Math.PI / 2 }, // West
+    { pos: [perimeterWidth / 4, 0, hallwayOffset], rot: Math.PI },                            // Horizontal hallway
+    { pos: [-hallwayOffset, 0, -perimeterHeight / 4], rot: -Math.PI / 2 },                    // Vertical hallway
+  ];
+
+  equipmentRooms.forEach((room, idx) => {
+    if (idx < equipmentPositions.length) {
+      const pos = equipmentPositions[idx];
+      roomLayouts.set(room.id, {
+        id: room.id,
+        label: room.room_name || room.room_number || `Room ${room.id}`,
+        position: pos.pos as [number, number, number],
+        labelRotation: pos.rot,
+      });
+    }
+  });
+
+  // Distribute patient rooms along all hallways
+  const hallwayRoomPositions: Array<{ pos: [number, number, number], rot: number }> = [];
+
+  // North hallway (left to right)
+  for (let i = 0; i < 6; i++) {
+    const x = -perimeterWidth / 2 + (i + 1) * (perimeterWidth / 7);
+    const side = i % 2 === 0 ? 1 : -1;
+    hallwayRoomPositions.push({
+      pos: [x, 0, -perimeterHeight / 2 + side * hallwayOffset],
+      rot: side > 0 ? Math.PI : 0,
+    });
+  }
+
+  // East hallway (top to bottom)
+  for (let i = 0; i < 5; i++) {
+    const z = -perimeterHeight / 2 + (i + 1) * (perimeterHeight / 6);
+    const side = i % 2 === 0 ? 1 : -1;
+    hallwayRoomPositions.push({
+      pos: [perimeterWidth / 2 + side * hallwayOffset, 0, z],
+      rot: side > 0 ? Math.PI / 2 : -Math.PI / 2,
+    });
+  }
+
+  // South hallway (right to left)
+  for (let i = 0; i < 6; i++) {
+    const x = perimeterWidth / 2 - (i + 1) * (perimeterWidth / 7);
+    const side = i % 2 === 0 ? 1 : -1;
+    hallwayRoomPositions.push({
+      pos: [x, 0, perimeterHeight / 2 + side * hallwayOffset],
+      rot: side > 0 ? 0 : Math.PI,
+    });
+  }
+
+  // West hallway (bottom to top)
+  for (let i = 0; i < 5; i++) {
+    const z = perimeterHeight / 2 - (i + 1) * (perimeterHeight / 6);
+    const side = i % 2 === 0 ? 1 : -1;
+    hallwayRoomPositions.push({
+      pos: [-perimeterWidth / 2 + side * hallwayOffset, 0, z],
+      rot: side > 0 ? -Math.PI / 2 : Math.PI / 2,
+    });
+  }
+
+  // Horizontal cross-hallway
+  for (let i = 0; i < 6; i++) {
+    const x = -perimeterWidth / 2 + (i + 1) * (perimeterWidth / 7);
+    const side = i % 2 === 0 ? 1 : -1;
+    hallwayRoomPositions.push({
+      pos: [x, 0, side * hallwayOffset],
+      rot: side > 0 ? Math.PI : 0,
+    });
+  }
+
+  // Vertical cross-hallway
+  for (let i = 0; i < 5; i++) {
+    const z = -perimeterHeight / 2 + (i + 1) * (perimeterHeight / 6);
+    const side = i % 2 === 0 ? 1 : -1;
+    hallwayRoomPositions.push({
+      pos: [side * hallwayOffset, 0, z],
+      rot: side > 0 ? -Math.PI / 2 : Math.PI / 2,
+    });
+  }
+
+  // Assign patient rooms to positions
+  patientRooms.forEach((room, idx) => {
+    if (idx < hallwayRoomPositions.length) {
+      const pos = hallwayRoomPositions[idx];
+      roomLayouts.set(room.id, {
+        id: room.id,
+        label: room.room_name || room.room_number || `Room ${room.id}`,
+        position: pos.pos,
+        labelRotation: pos.rot,
+      });
+    }
+  });
+
+  return {
+    roomLayouts,
+    hallways,
+    floorSections,
+    walls, // Empty array - no walls
+  };
 }
 
 // Component to track 3D position and update popup position
@@ -666,25 +659,42 @@ function Hospital2DMap({
           />
         ))}
 
-        {/* Central Help Desk */}
+        {/* Central Command Station */}
         <g>
           <circle
             cx={0}
             cy={0}
-            r={3}
-            fill="#22c55e"
-            stroke="#16a34a"
-            strokeWidth={0.3}
+            r={3.5}
+            fill="#1f2937"
+            stroke="#3b82f6"
+            strokeWidth={0.4}
+          />
+          <circle
+            cx={0}
+            cy={0}
+            r={2}
+            fill="#3b82f6"
+            opacity={0.3}
           />
           <text
             x={0}
             y={0.5}
             textAnchor="middle"
             fill="white"
-            fontSize={1.2}
+            fontSize={1}
             fontWeight="bold"
           >
-            HELP DESK
+            COMMAND
+          </text>
+          <text
+            x={0}
+            y={1.5}
+            textAnchor="middle"
+            fill="white"
+            fontSize={1}
+            fontWeight="bold"
+          >
+            CENTER
           </text>
         </g>
 
@@ -908,8 +918,8 @@ export function Hospital3DMap({
             />
           ))} */}
 
-          {/* Central Help Desk */}
-          <HelpDesk position={[0, 0, 0]} />
+          {/* Central Command Station */}
+          <CentralCommandStation position={[0, 0, 0]} />
 
           {/* Rooms */}
           {Array.from(roomLayouts.values()).map((layout) => (
