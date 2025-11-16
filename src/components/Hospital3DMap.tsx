@@ -1078,8 +1078,6 @@ position: [number, number, number];
 lookAt: [number, number, number];
 } | null>(null);
 
-// Pathfinding state - stores the current path to display
-const [currentPath, setCurrentPath] = useState<[number, number, number][]>([]);
 
 // Sort rooms and transform into 3D positions (memoized to prevent infinite loops)
 const room3DData = useMemo(() => {
@@ -1135,25 +1133,6 @@ onCloseRoomPopup();
 }
 };
 
-// Test pathfinding - draws path to a random room
-const handleTestPathfinding = () => {
-if (room3DData.length === 0) return;
-
-// Pick a random room (preferably a perimeter room for better demonstration)
-const randomIndex = Math.floor(Math.random() * room3DData.length);
-const targetRoom = room3DData[randomIndex];
-
-// Calculate path from help desk to this room
-const path = calculatePathToRoom(targetRoom.position, targetRoom.size);
-setCurrentPath(path);
-
-console.log(`Drawing path to ${targetRoom.label} at position:`, targetRoom.position);
-};
-
-// Clear the current path
-const handleClearPath = () => {
-setCurrentPath([]);
-};
 
 // Clean minimal corridor system - central area + perimeter loop
 const baseOffset = 13; // Same as in getDefaultPosition
@@ -1273,19 +1252,6 @@ const Map2D = () => {
 					HELP
 				</text>
 
-				{/* Draw pathfinding lines if in 2D mode */}
-				{currentPath.length > 1 && (
-					<polyline
-						points={currentPath.map(([x, , z]) =>
-							`${offsetX + x * scale},${offsetY + z * scale}`
-						).join(' ')}
-						fill="none"
-						stroke="#10b981"
-						strokeWidth="3"
-						strokeDasharray="10,5"
-						opacity="0.8"
-					/>
-				)}
 
 				{/* Rooms */}
 				{room3DData.map((room) => {
@@ -1466,8 +1432,6 @@ onClosePopup={handleClosePopup}
 />
 ))}
 
-{/* Pathfinding visualization */}
-{currentPath.length > 0 && <DottedPathLine points={currentPath} />}
 </Canvas>
 </Suspense>
 )}
@@ -1620,64 +1584,6 @@ minWidth: '60px'
 </button>
 </div>
 
-{/* Pathfinding Test Buttons */}
-<button
-onClick={handleTestPathfinding}
-style={{
-background: '#10b981',
-color: 'white',
-border: 'none',
-borderRadius: '8px',
-padding: '10px 16px',
-fontSize: '12px',
-fontWeight: '600',
-cursor: 'pointer',
-boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-transition: 'all 0.2s'
-}}
-onMouseEnter={(e) => {
-e.currentTarget.style.background = '#059669';
-e.currentTarget.style.transform = 'translateY(-2px)';
-e.currentTarget.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
-}}
-onMouseLeave={(e) => {
-e.currentTarget.style.background = '#10b981';
-e.currentTarget.style.transform = 'translateY(0)';
-e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-}}
->
-🗺️ Test Pathfinding
-</button>
-
-{currentPath.length > 0 && (
-<button
-onClick={handleClearPath}
-style={{
-background: '#ef4444',
-color: 'white',
-border: 'none',
-borderRadius: '8px',
-padding: '10px 16px',
-fontSize: '12px',
-fontWeight: '600',
-cursor: 'pointer',
-boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-transition: 'all 0.2s'
-}}
-onMouseEnter={(e) => {
-e.currentTarget.style.background = '#dc2626';
-e.currentTarget.style.transform = 'translateY(-2px)';
-e.currentTarget.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
-}}
-onMouseLeave={(e) => {
-e.currentTarget.style.background = '#ef4444';
-e.currentTarget.style.transform = 'translateY(0)';
-e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
-}}
->
-✕ Clear Path
-</button>
-)}
 </div>
 
 <style>{`

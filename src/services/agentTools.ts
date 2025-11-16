@@ -77,21 +77,55 @@ export async function checkInPatient(params: {
       const { data } = await supabase.from('rooms').select('*').eq('id', roomId).single();
       targetRoom = data;
     } else {
-      // Find available room (check both 'ready' and 'available' statuses)
-      console.log('🔍 [CHECK_IN] Searching for available room...');
-      const { data: availableRooms, error: roomError } = await supabase
+      // Find available room - PRIORITIZE General Ward rooms starting from room-102
+      console.log('🔍 [CHECK_IN] Searching for available General Ward room...');
+      
+      // First, try to find General Ward rooms starting from room-102
+      const { data: generalWardRooms, error: wardError } = await supabase
         .from('rooms')
         .select('*')
         .in('status', ['ready', 'available'])
+        .eq('room_type', 'General Ward')
+        .gte('room_number', 'room-102') // Start from room-102 and up
         .order('room_number', { ascending: true })
         .limit(1);
       
-      console.log('🔍 [CHECK_IN] Found rooms:', availableRooms?.length || 0);
-      if (roomError) {
-        console.error('❌ [CHECK_IN] Room search error:', roomError);
+      if (wardError) {
+        console.error('❌ [CHECK_IN] Ward room search error:', wardError);
       }
       
-      targetRoom = availableRooms?.[0];
+      if (generalWardRooms && generalWardRooms.length > 0) {
+        targetRoom = generalWardRooms[0];
+        console.log('✅ [CHECK_IN] Found General Ward room:', targetRoom.room_number);
+      } else {
+        // Fallback: try any General Ward room (including below 102)
+        console.log('⚠️ [CHECK_IN] No General Ward rooms >= 102, checking all General Ward rooms...');
+        const { data: anyWardRooms } = await supabase
+          .from('rooms')
+          .select('*')
+          .in('status', ['ready', 'available'])
+          .eq('room_type', 'General Ward')
+          .order('room_number', { ascending: true })
+          .limit(1);
+        
+        if (anyWardRooms && anyWardRooms.length > 0) {
+          targetRoom = anyWardRooms[0];
+          console.log('✅ [CHECK_IN] Found General Ward room:', targetRoom.room_number);
+        } else {
+          // Last resort: any available room
+          console.log('⚠️ [CHECK_IN] No General Ward rooms available, using any available room...');
+          const { data: anyRooms } = await supabase
+            .from('rooms')
+            .select('*')
+            .in('status', ['ready', 'available'])
+            .order('room_number', { ascending: true })
+            .limit(1);
+          
+          targetRoom = anyRooms?.[0];
+        }
+      }
+      
+      console.log('🔍 [CHECK_IN] Selected room:', targetRoom?.room_number || 'None found');
     }
 
     if (!targetRoom) {
@@ -182,43 +216,74 @@ export async function checkInPatient(params: {
 }
 
 /**
- * Discharge a patient
+ * Discharge a patient by name or ID
  */
 export async function dischargePatient(params: {
-  patientId: string;
+  patientId?: string;
+  patientName?: string;
 }): Promise<ToolResult> {
   try {
-    const { patientId } = params;
+    const { patientId, patientName } = params;
 
-    // Get patient and assignment
-    const { data: patient } = await supabase
-      .from('patients')
-      .select('*')
-      .eq('id', patientId)
-      .single();
+    console.log('🚪 [DISCHARGE] Starting patient discharge...', { patientId, patientName });
+
+    // Find patient by name or ID
+    let patient;
+    if (patientName) {
+      console.log('🔍 [DISCHARGE] Looking up patient by name:', patientName);
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .ilike('name', patientName)
+        .eq('is_active', true)
+        .maybeSingle();
+      
+      if (error) {
+        console.error('❌ [DISCHARGE] Error looking up patient:', error);
+      }
+      patient = data;
+    } else if (patientId) {
+      console.log('🔍 [DISCHARGE] Looking up patient by ID:', patientId);
+      const { data } = await supabase
+        .from('patients')
+        .select('*')
+        .eq('id', patientId)
+        .single();
+      patient = data;
+    }
 
     if (!patient) {
+      console.error('❌ [DISCHARGE] Patient not found');
       return {
         success: false,
-        message: 'Patient not found',
+        message: `Patient not found${patientName ? ` with name: ${patientName}` : ''}`,
       };
     }
+
+    console.log('✅ [DISCHARGE] Found patient:', patient.name, patient.id);
 
     const { data: assignment } = await supabase
       .from('room_assignments')
       .select('*')
-      .eq('patient_id', patientId)
+      .eq('patient_id', patient.id)
       .eq('is_active', true)
-      .single();
+      .maybeSingle();
+
+    if (assignment) {
+      console.log('✅ [DISCHARGE] Found room assignment:', assignment.room_id);
+    } else {
+      console.warn('⚠️ [DISCHARGE] No active room assignment found');
+    }
 
     // Update patient status
+    console.log('🔄 [DISCHARGE] Marking patient as discharged...');
     await supabase
       .from('patients')
       .update({
         is_active: false,
         discharge_date: new Date().toISOString(),
       })
-      .eq('id', patientId);
+      .eq('id', patient.id);
 
     // Deactivate room assignment
     if (assignment) {

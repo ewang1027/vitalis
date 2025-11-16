@@ -368,23 +368,71 @@ export function extractRoomNumber(text: string): number | null {
 
 /**
  * Find available room for patient admission
+ * Prioritizes General Ward rooms starting from room-102
  */
 export async function findAvailableRoom(roomType?: string): Promise<any | null> {
   try {
+    console.log('🔍 [FIND_ROOM] Searching for available room...', roomType ? `Type: ${roomType}` : 'Prioritizing General Ward');
+    
+    // If no specific room type requested, prioritize General Ward rooms >= room-102
+    if (!roomType) {
+      // First, try General Ward rooms starting from room-102
+      const { data: wardRooms, error: wardError } = await supabase
+        .from('rooms')
+        .select('*')
+        .in('status', ['ready', 'available'])
+        .eq('room_type', 'General Ward')
+        .gte('room_number', 'room-102')
+        .order('room_number', { ascending: true })
+        .limit(1);
+      
+      if (!wardError && wardRooms && wardRooms.length > 0) {
+        console.log('✅ [FIND_ROOM] Found General Ward room:', wardRooms[0].room_number);
+        return wardRooms[0];
+      }
+      
+      // Fallback: any General Ward room
+      const { data: anyWardRooms } = await supabase
+        .from('rooms')
+        .select('*')
+        .in('status', ['ready', 'available'])
+        .eq('room_type', 'General Ward')
+        .order('room_number', { ascending: true })
+        .limit(1);
+      
+      if (anyWardRooms && anyWardRooms.length > 0) {
+        console.log('✅ [FIND_ROOM] Found General Ward room (fallback):', anyWardRooms[0].room_number);
+        return anyWardRooms[0];
+      }
+    }
+    
+    // If specific room type requested OR no General Ward rooms available
     let query = supabase
       .from('rooms')
       .select('*')
-      .eq('status', 'available');
+      .in('status', ['ready', 'available']);
 
     if (roomType) {
       query = query.eq('room_type', roomType);
     }
 
-    const { data: rooms } = await query.limit(1);
+    const { data: rooms, error } = await query.order('room_number', { ascending: true }).limit(1);
+
+    if (error) {
+      console.error('❌ [FIND_ROOM] Database error:', error);
+      return null;
+    }
+
+    console.log('🔍 [FIND_ROOM] Found rooms:', rooms?.length || 0);
+    if (rooms && rooms.length > 0) {
+      console.log('✅ [FIND_ROOM] Selected room:', rooms[0].id, rooms[0].room_number, 'Status:', rooms[0].status);
+    } else {
+      console.warn('⚠️ [FIND_ROOM] No available rooms found!');
+    }
 
     return rooms && rooms.length > 0 ? rooms[0] : null;
   } catch (error) {
-    console.error('Error finding available room:', error);
+    console.error('❌ [FIND_ROOM] Error finding available room:', error);
     return null;
   }
 }
