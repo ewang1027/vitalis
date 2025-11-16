@@ -13,7 +13,7 @@ interface TaskPathAnimationProps {
 }
 
 export function TaskPathAnimation({ task, sourcePosition, targetPosition }: TaskPathAnimationProps) {
-  const lineRef = useRef<any>(null);
+  const lineRef = useRef<THREE.Line>(null);
   const progressRef = useRef(0);
   const [aiVisuals, setAiVisuals] = useState<AIVisualParams | null>(null);
 
@@ -26,6 +26,7 @@ export function TaskPathAnimation({ task, sourcePosition, targetPosition }: Task
       setAiVisuals(visuals);
     };
     loadVisuals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.type, task.priority]);
 
   // Create curved path between source and target with AI-driven curvature

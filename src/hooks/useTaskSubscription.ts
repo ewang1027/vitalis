@@ -143,9 +143,9 @@ export function useTaskSubscription() {
                   description: task.reason || undefined,
                   sourceRoomId: undefined,
                   targetRoomId: task.room_id || '',
-                  status: task.status as any,
+                  status: task.status as 'pending' | 'in_progress' | 'completed' | 'cancelled',
                   progress: task.status === 'in_progress' || task.status === 'active' ? 50 : 0,
-                  priority: task.priority as any,
+                  priority: task.priority as 'low' | 'medium' | 'high' | 'urgent',
                   assignedToId: task.assigned_to_id || undefined,
                   createdAt: new Date(task.created_at),
                   startedAt: task.status === 'in_progress' || task.status === 'active' ? new Date(task.updated_at) : undefined,
@@ -257,7 +257,7 @@ export function useTaskSubscription() {
 }
 
 // Helper function to map database action to visual task type
-function mapActionToTaskType(action: string): any {
+function mapActionToTaskType(action: string): VisualTask['type'] {
   const mapping: Record<string, string> = {
     'deliver_food': 'food_delivery',
     'food_delivery': 'food_delivery',

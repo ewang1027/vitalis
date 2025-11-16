@@ -190,7 +190,7 @@ export function TaskTestPanel({ availableRoomIds }: TaskTestPanelProps) {
           </label>
           <select
             value={priority}
-            onChange={(e) => setPriority(e.target.value as any)}
+            onChange={(e) => setPriority(e.target.value as 'low' | 'medium' | 'high' | 'urgent')}
             style={{
               width: '100%',
               padding: '6px 8px',

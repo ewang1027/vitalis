@@ -23,7 +23,7 @@ interface ESP32HardwareData {
   light?: number;
   motion?: boolean;
   batteryLevel?: number;
-  customSensors?: Record<string, any>;
+  customSensors?: Record<string, unknown>;
 }
 
 // HTTP endpoint for ESP32 to send hardware data

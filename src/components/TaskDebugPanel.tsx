@@ -5,8 +5,8 @@ import { TASK_CONFIGS } from '../types/visualTasks';
 
 export function TaskDebugPanel() {
   const { activeTasks, isConnected, createTask } = useTaskSubscription();
-  const [rooms, setRooms] = useState<any[]>([]);
-  const [allTasks, setAllTasks] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<Record<string, unknown>[]>([]);
+  const [allTasks, setAllTasks] = useState<Record<string, unknown>[]>([]);
   const [testResult, setTestResult] = useState<string>('');
   const [isVisible, setIsVisible] = useState(false);
 
@@ -59,8 +59,9 @@ export function TaskDebugPanel() {
       });
 
       setTestResult(`Success! Task created with ID: ${result.id}. Check the 3D map for visualization.`);
-    } catch (error: any) {
-      setTestResult(`Error: ${error.message}`);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setTestResult(`Error: ${errorMessage}`);
       console.error('Test task creation error:', error);
     }
   };

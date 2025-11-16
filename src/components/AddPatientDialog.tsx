@@ -35,13 +35,6 @@ export function AddPatientDialog({ open, onOpenChange, onPatientAdded }: AddPati
     assignedRoomId: 'none',
   });
 
-  // Fetch doctors and rooms when dialog opens
-  useEffect(() => {
-    if (open) {
-      fetchDoctorsAndRooms();
-    }
-  }, [open]);
-
   const fetchDoctorsAndRooms = async () => {
     setLoadingData(true);
     try {
@@ -74,6 +67,14 @@ export function AddPatientDialog({ open, onOpenChange, onPatientAdded }: AddPati
       setLoadingData(false);
     }
   };
+
+  // Fetch doctors and rooms when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchDoctorsAndRooms();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

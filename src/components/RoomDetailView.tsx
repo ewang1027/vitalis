@@ -21,13 +21,13 @@ import { Badge } from '@/components/ui/badge';
 // Type for room details from useRoomDetails hook
 interface RoomDetailViewProps {
   room: {
-    room: any;
-    patient: any;
-    doctor: any;
-    nurse: any;
-    vitals: any;
-    equipment: any[];
-    alerts: any[];
+    room: Record<string, unknown>;
+    patient: Record<string, unknown> | null;
+    doctor: Record<string, unknown> | null;
+    nurse: Record<string, unknown> | null;
+    vitals: Record<string, unknown> | null;
+    equipment: Record<string, unknown>[];
+    alerts: Record<string, unknown>[];
   };
   onExit: () => void;
 }
@@ -165,7 +165,7 @@ function Equipment({ equipment, onClick }: EquipmentProps) {
   );
 }
 
-function Room({ roomData }: { roomData: any }) {
+function Room({ roomData }: { roomData: Record<string, unknown> }) {
   const wallColor = '#e5e7eb';
   const floorColor = '#f3f4f6';
 
@@ -223,7 +223,7 @@ function Room({ roomData }: { roomData: any }) {
 }
 
 export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
-  const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<Record<string, unknown> | null>(null);
   const { data: esp32Data, isConnected: esp32Connected } = useESP32Data();
 
   return (
@@ -276,7 +276,7 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
         <Room roomData={room} />
 
         {/* Equipment */}
-        {room.equipment?.map((item: any) => (
+        {room.equipment?.map((item: Record<string, unknown>) => (
           <Equipment
             key={item.id}
             equipment={item}

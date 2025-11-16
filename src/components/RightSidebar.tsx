@@ -50,6 +50,7 @@ export function RightSidebar({
   // Only sync initial collapsed state from parent
   useEffect(() => {
     setIsManuallyCollapsed(isCollapsed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty dependency - only run once on mount
 
   const handleCollapse = (collapsed: boolean) => {

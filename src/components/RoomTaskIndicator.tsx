@@ -23,6 +23,7 @@ export function RoomTaskIndicator({ task, roomPosition }: RoomTaskIndicatorProps
       setAiVisuals(visuals);
     };
     loadVisuals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task.id, task.type, task.priority]);
 
   // Animate the task indicator with AI-driven parameters
