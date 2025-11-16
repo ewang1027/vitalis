@@ -7,7 +7,12 @@ export function ESP32Widget() {
   const { data, isConnected } = useESP32Data();
 
   return (
-    <Card className="w-64 shadow-lg">
+    <Card 
+      className="w-64 shadow-lg" 
+      style={{ 
+        backgroundColor: isConnected ? 'rgba(34, 197, 94, 0.5)' : 'rgba(239, 68, 68, 0.5)'
+      }}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold text-white">ESP32 Monitor</CardTitle>
