@@ -638,7 +638,78 @@ return (
 		</Text>
 	</Billboard>
 
-{/* Room Info Popup - Removed per user request */}
+{/* Room Info Popup */}
+{isSelected && (
+<Html position={[0, wallHeight + 0.9, 0]} center>
+<div style={{
+background: 'white',
+borderRadius: '8px',
+boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+padding: '12px',
+minWidth: '220px',
+maxWidth: '280px',
+border: `2px solid ${getStatusColor()}`,
+position: 'relative'
+}}>
+{/* Close Button */}
+<button
+onClick={(e) => {
+e.stopPropagation();
+onClosePopup?.();
+}}
+style={{
+position: 'absolute',
+top: '8px',
+right: '8px',
+background: 'transparent',
+border: 'none',
+cursor: 'pointer',
+fontSize: '16px',
+color: '#6b7280',
+padding: '2px',
+lineHeight: 1
+}}
+>
+×
+</button>
+
+<h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#1f2937', marginBottom: '8px', paddingRight: '20px' }}>
+{label}
+</h3>
+
+{roomData && (
+<div style={{ marginBottom: '8px', fontSize: '12px' }}>
+<p style={{ fontWeight: '600', color: '#1f2937' }}>{roomData.room_name}</p>
+<p style={{ fontSize: '11px', color: '#6b7280' }}>
+Status: {roomData.status} • Type: {roomData.room_type}
+{roomData.floor && ` • Floor ${roomData.floor}`}
+</p>
+</div>
+)}
+
+<button
+onClick={(e) => {
+e.stopPropagation();
+onEnterRoom?.(roomId);
+}}
+style={{
+width: '100%',
+padding: '6px 12px',
+background: '#10b981',
+color: 'white',
+border: 'none',
+borderRadius: '6px',
+fontSize: '12px',
+fontWeight: '600',
+cursor: 'pointer',
+marginTop: '4px'
+}}
+>
+🔍 Enter Room (3D View)
+</button>
+</div>
+</Html>
+)}
 </group>
 );
 }
