@@ -16,6 +16,149 @@ onEnterRoom?: (roomId: string) => void;
 onCloseRoomPopup?: () => void;
 }
 
+// Dotted Line Component for path visualization
+function DottedPathLine({ points }: { points: [number, number, number][] }) {
+	const lineRef = useRef<THREE.Line>(null);
+
+	// Create the line object with proper geometry
+	const lineObject = useMemo(() => {
+		if (points.length < 2) return null;
+
+		// Create curve from points
+		const vectors = points.map(p => new THREE.Vector3(...p));
+		const curve = new THREE.CatmullRomCurve3(vectors);
+		const curvePoints = curve.getPoints(100);
+
+		// Create geometry
+		const geometry = new THREE.BufferGeometry().setFromPoints(curvePoints);
+
+		// Create material
+		const material = new THREE.LineDashedMaterial({
+			color: 0x10b981,
+			dashSize: 0.3,
+			gapSize: 0.2,
+			opacity: 0.8,
+			transparent: true,
+		});
+
+		// Create line
+		const line = new THREE.Line(geometry, material);
+		line.computeLineDistances(); // Required for dashed lines - must be called on Line, not geometry
+		return line;
+	}, [points]);
+
+	// Animate the dash offset for moving effect
+	useFrame(() => {
+		if (lineRef.current && lineRef.current.material) {
+			const material = lineRef.current.material as THREE.LineDashedMaterial & { dashOffset: number };
+			material.dashOffset -= 0.02; // Animate the dashes
+		}
+	});
+
+	if (!lineObject) return null;
+
+	return <primitive ref={lineRef} object={lineObject} />;
+}
+
+// Equipment Components
+function HospitalBed({ position }: { position: [number, number, number] }) {
+return (
+<group position={position}>
+{/* Bed frame */}
+<mesh position={[0, 0.3, 0]} castShadow>
+<boxGeometry args={[1.8, 0.6, 0.9]} />
+<meshStandardMaterial color="#f0f0f0" />
+</mesh>
+{/* Mattress */}
+<mesh position={[0, 0.65, 0]} castShadow>
+<boxGeometry args={[1.7, 0.15, 0.85]} />
+<meshStandardMaterial color="#e8e8ff" />
+</mesh>
+{/* Pillow */}
+<mesh position={[0, 0.75, -0.3]} castShadow>
+<boxGeometry args={[0.5, 0.1, 0.3]} />
+<meshStandardMaterial color="#ffffff" />
+</mesh>
+</group>
+);
+}
+
+function VitalsMonitor({ position }: { position: [number, number, number] }) {
+return (
+<group position={position}>
+{/* Stand */}
+<mesh position={[0, 0.5, 0]} castShadow>
+<cylinderGeometry args={[0.05, 0.05, 1]} />
+<meshStandardMaterial color="#808080" />
+</mesh>
+{/* Monitor screen */}
+<mesh position={[0, 1.1, 0]} castShadow>
+<boxGeometry args={[0.4, 0.3, 0.05]} />
+<meshStandardMaterial color="#1e293b" emissive="#3b82f6" emissiveIntensity={0.3} />
+</mesh>
+</group>
+);
+}
+
+function StorageShelf({ position }: { position: [number, number, number] }) {
+return (
+<group position={position}>
+{/* Shelf frame */}
+<mesh position={[0, 0.8, 0]} castShadow>
+<boxGeometry args={[1.2, 1.6, 0.4]} />
+<meshStandardMaterial color="#8b7355" />
+</mesh>
+{/* Shelves */}
+<mesh position={[0, 0.4, 0.15]} castShadow>
+<boxGeometry args={[1.1, 0.05, 0.35]} />
+<meshStandardMaterial color="#a0826d" />
+</mesh>
+<mesh position={[0, 0.8, 0.15]} castShadow>
+<boxGeometry args={[1.1, 0.05, 0.35]} />
+<meshStandardMaterial color="#a0826d" />
+</mesh>
+<mesh position={[0, 1.2, 0.15]} castShadow>
+<boxGeometry args={[1.1, 0.05, 0.35]} />
+<meshStandardMaterial color="#a0826d" />
+</mesh>
+</group>
+);
+}
+
+function ExamTable({ position }: { position: [number, number, number] }) {
+return (
+<group position={position}>
+{/* Table base */}
+<mesh position={[0, 0.4, 0]} castShadow>
+<boxGeometry args={[0.8, 0.8, 0.5]} />
+<meshStandardMaterial color="#c0c0c0" />
+</mesh>
+{/* Table top */}
+<mesh position={[0, 0.85, 0]} castShadow>
+<boxGeometry args={[1.8, 0.1, 0.7]} />
+<meshStandardMaterial color="#e0e0e0" />
+</mesh>
+</group>
+);
+}
+
+function NurseDesk({ position }: { position: [number, number, number] }) {
+return (
+<group position={position}>
+{/* Desk */}
+<mesh position={[0, 0.4, 0]} castShadow>
+<boxGeometry args={[1.5, 0.8, 0.8]} />
+<meshStandardMaterial color="#8b7355" />
+</mesh>
+{/* Computer */}
+<mesh position={[0.3, 0.9, 0]} castShadow>
+<boxGeometry args={[0.3, 0.25, 0.05]} />
+<meshStandardMaterial color="#1e293b" emissive="#10b981" emissiveIntensity={0.2} />
+</mesh>
+</group>
+);
+}
+
 // Room component
 function Room({
 position,
@@ -81,11 +224,22 @@ return (
 {/* Floor */}
 <mesh position={[0, 0.02, 0]} receiveShadow>
 <boxGeometry args={[size[0], 0.04, size[2]]} />
-<meshStandardMaterial 
-color="#ffffff" 
+<meshStandardMaterial
+color="#ffffff"
 roughness={0.8}
 metalness={0.1}
 />
+</mesh>
+
+{/* Large invisible hitbox for easy clicking - covers entire room area */}
+<mesh
+position={[0, wallHeight / 2, 0]}
+onClick={handleInteraction}
+onPointerOver={handlePointerOver}
+onPointerOut={handlePointerOut}
+visible={false}
+>
+<boxGeometry args={[size[0], wallHeight, size[2]]} />
 </mesh>
 
 {/* Back Wall (North) */}
@@ -212,23 +366,259 @@ metalness={0.7}
 />
 </mesh>
 
-{/* Interior furniture - Simple bed representation */}
-<group position={[-size[0] / 4, 0.3, -size[2] / 4]}>
-<mesh castShadow>
-<boxGeometry args={[1.2, 0.3, 2]} />
-<meshStandardMaterial color="#c9d6df" roughness={0.8} />
+{/* Room-specific equipment based on room type */}
+{(() => {
+const roomType = roomData?.room_type?.toLowerCase() || '';
+const roomName = roomData?.room_name?.toLowerCase() || '';
+const roomNumber = roomData?.room_number?.toLowerCase() || '';
+const combined = `${roomType} ${roomName} ${roomNumber}`;
+
+// Storage Room Equipment - Multiple shelves and supplies
+if (combined.includes('storage') || combined.includes('supply') || combined.includes('supplies')) {
+return (
+<>
+<StorageShelf position={[-0.9, 0, -0.8]} />
+<StorageShelf position={[0, 0, -0.8]} />
+<StorageShelf position={[0.9, 0, -0.8]} />
+<StorageShelf position={[-0.9, 0, 0.5]} />
+<StorageShelf position={[0.9, 0, 0.5]} />
+{/* Supply boxes on floor */}
+<mesh position={[0, 0.15, 0.8]} castShadow>
+<boxGeometry args={[0.4, 0.3, 0.4]} />
+<meshStandardMaterial color="#8b7355" />
 </mesh>
-<mesh position={[0, 0.4, -0.7]} castShadow>
-<boxGeometry args={[1.2, 0.5, 0.6]} />
-<meshStandardMaterial color="#8b9aab" roughness={0.6} />
+<mesh position={[0.5, 0.15, 0.8]} castShadow>
+<boxGeometry args={[0.4, 0.3, 0.4]} />
+<meshStandardMaterial color="#a0826d" />
+</mesh>
+</>
+);
+}
+
+// Patient Room Equipment - Bed, vitals, side table
+if (combined.includes('patient') || (combined.includes('room') && !combined.includes('storage') && !combined.includes('exam'))) {
+return (
+<>
+<HospitalBed position={[-0.5, 0, -0.3]} />
+<VitalsMonitor position={[0.9, 0, -0.3]} />
+{/* Bedside table */}
+<mesh position={[-0.5, 0.35, 0.7]} castShadow>
+<boxGeometry args={[0.4, 0.7, 0.4]} />
+<meshStandardMaterial color="#d4d4d4" />
+</mesh>
+{/* IV Stand */}
+<group position={[0.5, 0, 0.2]}>
+<mesh castShadow>
+<cylinderGeometry args={[0.03, 0.05, 1.5]} />
+<meshStandardMaterial color="#c0c0c0" />
+</mesh>
+<mesh position={[0, 1.5, 0]} castShadow>
+<sphereGeometry args={[0.08]} />
+<meshStandardMaterial color="#e0e0e0" />
 </mesh>
 </group>
-
-{/* Small side table */}
-<mesh position={[size[0] / 4, 0.35, -size[2] / 4]} castShadow>
-<boxGeometry args={[0.5, 0.7, 0.5]} />
-<meshStandardMaterial color="#d4d4d4" roughness={0.7} />
+{/* Chair */}
+<group position={[0.9, 0, 0.7]}>
+<mesh position={[0, 0.25, 0]} castShadow>
+<boxGeometry args={[0.4, 0.5, 0.4]} />
+<meshStandardMaterial color="#6b7280" />
 </mesh>
+<mesh position={[0, 0.6, -0.15]} castShadow>
+<boxGeometry args={[0.4, 0.4, 0.1]} />
+<meshStandardMaterial color="#6b7280" />
+</mesh>
+</group>
+</>
+);
+}
+
+// Triage/Exam Room Equipment - Exam table, vitals, medical cart
+if (combined.includes('triage') || combined.includes('exam')) {
+return (
+<>
+<ExamTable position={[0, 0, -0.2]} />
+<VitalsMonitor position={[1, 0, 0.3]} />
+{/* Medical supply cart */}
+<group position={[-1, 0, 0.5]}>
+<mesh position={[0, 0.4, 0]} castShadow>
+<boxGeometry args={[0.5, 0.8, 0.3]} />
+<meshStandardMaterial color="#e0e0e0" />
+</mesh>
+<mesh position={[-0.15, 0.1, 0]} castShadow>
+<cylinderGeometry args={[0.04, 0.04, 0.2]} />
+<meshStandardMaterial color="#808080" />
+</mesh>
+<mesh position={[0.15, 0.1, 0]} castShadow>
+<cylinderGeometry args={[0.04, 0.04, 0.2]} />
+<meshStandardMaterial color="#808080" />
+</mesh>
+</group>
+{/* Wall-mounted equipment */}
+<mesh position={[size[0] / 2 - 0.3, 1.2, -size[2] / 3]} castShadow>
+<boxGeometry args={[0.1, 0.4, 0.3]} />
+<meshStandardMaterial color="#c0c0c0" />
+</mesh>
+</>
+);
+}
+
+// Nurse Station Equipment - Desk, computers, filing
+if (combined.includes('nurse') && combined.includes('station')) {
+return (
+<>
+<NurseDesk position={[0, 0, -0.3]} />
+{/* Filing cabinet */}
+<mesh position={[-1, 0.5, 0.8]} castShadow>
+<boxGeometry args={[0.5, 1, 0.6]} />
+<meshStandardMaterial color="#6b7280" />
+</mesh>
+{/* Additional computer station */}
+<group position={[0.8, 0, 0.5]}>
+<mesh position={[0, 0.4, 0]} castShadow>
+<boxGeometry args={[0.6, 0.8, 0.5]} />
+<meshStandardMaterial color="#8b7355" />
+</mesh>
+<mesh position={[0, 0.9, 0]} castShadow>
+<boxGeometry args={[0.25, 0.2, 0.05]} />
+<meshStandardMaterial color="#1e293b" emissive="#10b981" emissiveIntensity={0.2} />
+</mesh>
+</group>
+</>
+);
+}
+
+// Operating/Procedure Room Equipment
+if (combined.includes('operating') || combined.includes('surgery') || combined.includes('procedure') || combined.includes('or ')) {
+return (
+<>
+<ExamTable position={[0, 0, 0]} />
+{/* Large surgical light */}
+<group position={[0, 2, 0]}>
+<mesh castShadow>
+<cylinderGeometry args={[0.6, 0.4, 0.2]} />
+<meshStandardMaterial color="#e0e0e0" emissive="#ffffff" emissiveIntensity={0.5} />
+</mesh>
+</group>
+{/* Equipment cart */}
+<group position={[1.2, 0, 0.5]}>
+<mesh position={[0, 0.5, 0]} castShadow>
+<boxGeometry args={[0.6, 1, 0.4]} />
+<meshStandardMaterial color="#c0c0c0" />
+</mesh>
+</group>
+<VitalsMonitor position={[-1.2, 0, 0]} />
+</>
+);
+}
+
+// ICU/Critical Care - Similar to patient room but more equipment
+if (combined.includes('icu') || combined.includes('intensive') || combined.includes('critical')) {
+return (
+<>
+<HospitalBed position={[0, 0, -0.3]} />
+<VitalsMonitor position={[1, 0, -0.5]} />
+<VitalsMonitor position={[-1, 0, -0.5]} />
+{/* Large medical equipment */}
+<mesh position={[1, 0.6, 0.6]} castShadow>
+<boxGeometry args={[0.5, 1.2, 0.4]} />
+<meshStandardMaterial color="#1e293b" emissive="#3b82f6" emissiveIntensity={0.3} />
+</mesh>
+{/* IV Stand */}
+<group position={[-0.7, 0, 0.3]}>
+<mesh castShadow>
+<cylinderGeometry args={[0.03, 0.05, 1.5]} />
+<meshStandardMaterial color="#c0c0c0" />
+</mesh>
+</group>
+</>
+);
+}
+
+// Utility/Clean/Dirty Rooms - Basic shelving and equipment
+if (combined.includes('utility') || combined.includes('utilities') || combined.includes('clean') || combined.includes('dirty') || combined.includes('linen')) {
+return (
+<>
+<StorageShelf position={[-0.8, 0, -0.6]} />
+<StorageShelf position={[0.8, 0, -0.6]} />
+{/* Utility sink */}
+<mesh position={[0, 0.5, 0.8]} castShadow>
+<boxGeometry args={[0.8, 1, 0.5]} />
+<meshStandardMaterial color="#e0e0e0" />
+</mesh>
+{/* Bins */}
+<mesh position={[-0.8, 0.3, 0.6]} castShadow>
+<boxGeometry args={[0.4, 0.6, 0.4]} />
+<meshStandardMaterial color="#6b7280" />
+</mesh>
+<mesh position={[0.8, 0.3, 0.6]} castShadow>
+<boxGeometry args={[0.4, 0.6, 0.4]} />
+<meshStandardMaterial color="#6b7280" />
+</mesh>
+</>
+);
+}
+
+// Pharmacy - Shelves and medication storage
+if (combined.includes('pharmacy') || combined.includes('medication') || combined.includes('med')) {
+return (
+<>
+<StorageShelf position={[-1, 0, -0.7]} />
+<StorageShelf position={[0, 0, -0.7]} />
+<StorageShelf position={[1, 0, -0.7]} />
+{/* Pharmacy counter */}
+<group position={[0, 0, 0.6]}>
+<mesh position={[0, 0.4, 0]} castShadow>
+<boxGeometry args={[2, 0.8, 0.6]} />
+<meshStandardMaterial color="#8b7355" />
+</mesh>
+<mesh position={[0.6, 0.9, 0]} castShadow>
+<boxGeometry args={[0.3, 0.25, 0.05]} />
+<meshStandardMaterial color="#1e293b" emissive="#10b981" emissiveIntensity={0.2} />
+</mesh>
+</group>
+</>
+);
+}
+
+// Waiting Area/Lobby
+if (combined.includes('waiting') || combined.includes('lobby') || combined.includes('reception')) {
+return (
+<>
+{/* Chairs arranged in rows */}
+{[-0.8, 0, 0.8].map((x, i) => (
+<group key={i} position={[x, 0, -0.5]}>
+<mesh position={[0, 0.25, 0]} castShadow>
+<boxGeometry args={[0.5, 0.5, 0.5]} />
+<meshStandardMaterial color="#3b82f6" />
+</mesh>
+<mesh position={[0, 0.6, -0.2]} castShadow>
+<boxGeometry args={[0.5, 0.5, 0.1]} />
+<meshStandardMaterial color="#3b82f6" />
+</mesh>
+</group>
+))}
+{/* Small table with magazines */}
+<mesh position={[0, 0.3, 0.6]} castShadow>
+<boxGeometry args={[0.8, 0.6, 0.5]} />
+<meshStandardMaterial color="#8b7355" />
+</mesh>
+</>
+);
+}
+
+// Default: Basic medical room with minimal furniture
+return (
+<>
+{/* Basic exam table */}
+<ExamTable position={[0, 0, -0.3]} />
+{/* Small equipment cart */}
+<mesh position={[0.8, 0.4, 0.5]} castShadow>
+<boxGeometry args={[0.5, 0.8, 0.4]} />
+<meshStandardMaterial color="#d4d4d4" />
+</mesh>
+</>
+);
+})()}
 
 	{/* Room Label */}
 	<Billboard
@@ -248,78 +638,7 @@ metalness={0.7}
 		</Text>
 	</Billboard>
 
-{/* Room Info Popup */}
-{isSelected && (
-<Html position={[0, wallHeight + 0.9, 0]} center>
-<div style={{
-background: 'white',
-borderRadius: '8px',
-boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-padding: '12px',
-minWidth: '220px',
-maxWidth: '280px',
-border: `2px solid ${getStatusColor()}`,
-position: 'relative'
-}}>
-{/* Close Button */}
-<button
-onClick={(e) => {
-e.stopPropagation();
-onClosePopup?.();
-}}
-style={{
-position: 'absolute',
-top: '8px',
-right: '8px',
-background: 'transparent',
-border: 'none',
-cursor: 'pointer',
-fontSize: '16px',
-color: '#6b7280',
-padding: '2px',
-lineHeight: 1
-}}
->
-×
-</button>
-
-<h3 style={{ fontSize: '14px', fontWeight: 'bold', color: '#1f2937', marginBottom: '8px', paddingRight: '20px' }}>
-{label}
-</h3>
-
-{roomData && (
-<div style={{ marginBottom: '8px', fontSize: '12px' }}>
-<p style={{ fontWeight: '600', color: '#1f2937' }}>{roomData.room_name}</p>
-<p style={{ fontSize: '11px', color: '#6b7280' }}>
-Status: {roomData.status} • Type: {roomData.room_type}
-{roomData.floor && ` • Floor ${roomData.floor}`}
-</p>
-</div>
-)}
-
-<button
-onClick={(e) => {
-e.stopPropagation();
-onEnterRoom?.(roomId);
-}}
-style={{
-width: '100%',
-padding: '6px 12px',
-background: '#10b981',
-color: 'white',
-border: 'none',
-borderRadius: '6px',
-fontSize: '12px',
-fontWeight: '600',
-cursor: 'pointer',
-marginTop: '4px'
-}}
->
-🔍 Enter Room (3D View)
-</button>
-</div>
-</Html>
-)}
+{/* Room Info Popup - Removed per user request */}
 </group>
 );
 }
@@ -566,6 +885,114 @@ Math.sin(extraAngle) * extraRadius
 ];
 }
 
+// Pathfinding function to calculate route from help desk to room entrance
+function calculatePathToRoom(roomPosition: [number, number, number], roomSize: [number, number, number]): [number, number, number][] {
+	const helpDeskPos: [number, number, number] = [0, 0, 0];
+	const [x, y, z] = roomPosition;
+	const baseOffset = 13;
+	const centralRadius = 8; // Radius of central area
+	const pathHeight = 0.1; // Slightly above floor
+
+	const path: [number, number, number][] = [];
+
+	// Start at help desk
+	path.push([helpDeskPos[0], pathHeight, helpDeskPos[2]]);
+
+	// Determine which quadrant/side the room is on
+	const absX = Math.abs(x);
+	const absZ = Math.abs(z);
+
+	// Room entrance is on the south side (front) of the room at z + roomSize[2]/2
+	const entranceZ = z + roomSize[2] / 2;
+	const entranceX = x;
+
+	// If room is in central area (close to origin)
+	if (absX < centralRadius && absZ < centralRadius) {
+		// Direct path to room entrance
+		path.push([entranceX, pathHeight, entranceZ - 1.5]); // Stop before door
+	} else {
+		// Room is on perimeter - need to navigate through corridors
+
+		// Step 1: Exit central area toward the room's general direction
+		let exitX = 0;
+		let exitZ = 0;
+
+		if (absX > absZ) {
+			// Room is more to the left/right
+			exitX = x > 0 ? centralRadius : -centralRadius;
+			exitZ = 0;
+		} else {
+			// Room is more to the top/bottom
+			exitX = 0;
+			exitZ = z > 0 ? centralRadius : -centralRadius;
+		}
+
+		path.push([exitX, pathHeight, exitZ]);
+
+		// Step 2: Navigate to the corridor nearest to the room
+		// Determine if room is on a side (N/S/E/W) or corner
+		const onNorthSide = Math.abs(z - (-baseOffset)) < 3;
+		const onSouthSide = Math.abs(z - baseOffset) < 3;
+		const onEastSide = Math.abs(x - baseOffset) < 3;
+		const onWestSide = Math.abs(x - (-baseOffset)) < 3;
+
+		if (onNorthSide || onSouthSide) {
+			// Room is on north or south perimeter
+			const corridorZ = z > 0 ? baseOffset : -baseOffset;
+
+			// Move along the appropriate axis
+			if (exitZ !== corridorZ) {
+				path.push([exitX, pathHeight, corridorZ]);
+			}
+
+			// Move along corridor to room's X position
+			if (exitX !== x) {
+				path.push([x, pathHeight, corridorZ]);
+			}
+
+			// Move to room entrance
+			path.push([entranceX, pathHeight, entranceZ - 1.5]);
+
+		} else if (onEastSide || onWestSide) {
+			// Room is on east or west perimeter
+			const corridorX = x > 0 ? baseOffset : -baseOffset;
+
+			// Move to corridor
+			if (exitX !== corridorX) {
+				path.push([corridorX, pathHeight, exitZ]);
+			}
+
+			// Move along corridor to room's Z position
+			if (exitZ !== z) {
+				path.push([corridorX, pathHeight, z]);
+			}
+
+			// Move to room entrance
+			path.push([entranceX, pathHeight, entranceZ - 1.5]);
+
+		} else {
+			// Room is in a corner - navigate via two corridor segments
+			let intermediateX = x > 0 ? baseOffset : -baseOffset;
+			let intermediateZ = z > 0 ? baseOffset : -baseOffset;
+
+			// Choose path based on exit direction
+			if (Math.abs(exitX) > Math.abs(exitZ)) {
+				// Exited horizontally - go X first, then Z
+				path.push([intermediateX, pathHeight, exitZ]);
+				path.push([intermediateX, pathHeight, intermediateZ]);
+				path.push([entranceX, pathHeight, entranceZ - 1.5]);
+			} else {
+				// Exited vertically - go Z first, then X
+				path.push([exitX, pathHeight, intermediateZ]);
+				path.push([intermediateX, pathHeight, intermediateZ]);
+				path.push([entranceX, pathHeight, entranceZ - 1.5]);
+			}
+		}
+	}
+
+	return path;
+}
+
 export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup }: Hospital3DMapProps) {
 // Default camera position (less aerial view) - memoized to prevent recreating on every render
 const defaultCameraPosition = useMemo<[number, number, number]>(() => [0, 20, 28], []);
@@ -576,6 +1003,9 @@ const [cameraTarget, setCameraTarget] = useState<{
 position: [number, number, number];
 lookAt: [number, number, number];
 } | null>(null);
+
+// Pathfinding state - stores the current path to display
+const [currentPath, setCurrentPath] = useState<[number, number, number][]>([]);
 
 // Sort rooms and transform into 3D positions (memoized to prevent infinite loops)
 const room3DData = useMemo(() => {
@@ -629,6 +1059,26 @@ lookAt: defaultCameraLookAt
 if (onCloseRoomPopup) {
 onCloseRoomPopup();
 }
+};
+
+// Test pathfinding - draws path to a random room
+const handleTestPathfinding = () => {
+if (room3DData.length === 0) return;
+
+// Pick a random room (preferably a perimeter room for better demonstration)
+const randomIndex = Math.floor(Math.random() * room3DData.length);
+const targetRoom = room3DData[randomIndex];
+
+// Calculate path from help desk to this room
+const path = calculatePathToRoom(targetRoom.position, targetRoom.size);
+setCurrentPath(path);
+
+console.log(`Drawing path to ${targetRoom.label} at position:`, targetRoom.position);
+};
+
+// Clear the current path
+const handleClearPath = () => {
+setCurrentPath([]);
 };
 
 // Clean minimal corridor system - central area + perimeter loop
@@ -746,6 +1196,9 @@ onEnterRoom={onEnterRoom}
 onClosePopup={handleClosePopup}
 />
 ))}
+
+{/* Pathfinding visualization */}
+{currentPath.length > 0 && <DottedPathLine points={currentPath} />}
 </Canvas>
 </Suspense>
 
@@ -817,6 +1270,74 @@ boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
 <p style={{ fontSize: '10px', color: '#6b7280', margin: 0 }}>
 🖱️ Drag to rotate • Scroll to zoom • Click rooms for details
 </p>
+</div>
+
+{/* Pathfinding Test Buttons */}
+<div style={{
+position: 'absolute',
+bottom: '16px',
+left: '16px',
+display: 'flex',
+gap: '8px',
+zIndex: 10
+}}>
+<button
+onClick={handleTestPathfinding}
+style={{
+background: '#10b981',
+color: 'white',
+border: 'none',
+borderRadius: '8px',
+padding: '10px 16px',
+fontSize: '12px',
+fontWeight: '600',
+cursor: 'pointer',
+boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+transition: 'all 0.2s'
+}}
+onMouseEnter={(e) => {
+e.currentTarget.style.background = '#059669';
+e.currentTarget.style.transform = 'translateY(-2px)';
+e.currentTarget.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
+}}
+onMouseLeave={(e) => {
+e.currentTarget.style.background = '#10b981';
+e.currentTarget.style.transform = 'translateY(0)';
+e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+}}
+>
+🗺️ Test Pathfinding
+</button>
+
+{currentPath.length > 0 && (
+<button
+onClick={handleClearPath}
+style={{
+background: '#ef4444',
+color: 'white',
+border: 'none',
+borderRadius: '8px',
+padding: '10px 16px',
+fontSize: '12px',
+fontWeight: '600',
+cursor: 'pointer',
+boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+transition: 'all 0.2s'
+}}
+onMouseEnter={(e) => {
+e.currentTarget.style.background = '#dc2626';
+e.currentTarget.style.transform = 'translateY(-2px)';
+e.currentTarget.style.boxShadow = '0 6px 8px rgba(0,0,0,0.15)';
+}}
+onMouseLeave={(e) => {
+e.currentTarget.style.background = '#ef4444';
+e.currentTarget.style.transform = 'translateY(0)';
+e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.1)';
+}}
+>
+✕ Clear Path
+</button>
+)}
 </div>
 
 <style>{`
