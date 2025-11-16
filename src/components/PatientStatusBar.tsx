@@ -15,8 +15,24 @@ function getSeverityColor(severity?: string | null): string {
   return 'bg-accent-green';
 }
 
+function getSeverityPriority(severity?: string | null): number {
+  if (!severity) return 3;
+
+  const normalized = severity.toLowerCase();
+  if (normalized === 'critical') return 1;
+  if (normalized === 'moderate' || normalized === 'warning') return 2;
+  return 3;
+}
+
 export function PatientStatusBar({ onExpand }: PatientStatusBarProps) {
   const { patientsData, loading } = usePatientsDashboard();
+
+  // Sort patients by urgency (critical first, then moderate, then stable)
+  const sortedPatientsData = [...patientsData].sort((a, b) => {
+    const priorityA = getSeverityPriority(a.patient.severity);
+    const priorityB = getSeverityPriority(b.patient.severity);
+    return priorityA - priorityB;
+  });
 
   return (
     <div className="h-full w-12 border-l border-border bg-bg-secondary flex flex-col items-center animate-in slide-in-from-right duration-300">
@@ -38,7 +54,7 @@ export function PatientStatusBar({ onExpand }: PatientStatusBarProps) {
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin text-text-gray mt-4" />
         ) : (
-          patientsData.map(({ patient }) => (
+          sortedPatientsData.map(({ patient }) => (
             <div
               key={patient.id}
               className="relative group"
@@ -64,10 +80,10 @@ export function PatientStatusBar({ onExpand }: PatientStatusBarProps) {
       </div>
 
       {/* Patient Count */}
-      {!loading && patientsData.length > 0 && (
+      {!loading && sortedPatientsData.length > 0 && (
         <div className="p-2 border-t border-border">
           <div className="text-xs font-semibold text-text-gray text-center">
-            {patientsData.length}
+            {sortedPatientsData.length}
           </div>
         </div>
       )}

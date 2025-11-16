@@ -1,12 +1,24 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Accordion } from '@/components/ui/accordion';
 import { PatientVitalsCard } from '@/components/PatientVitalsCard';
 import { usePatientsDashboard } from '@/hooks/useSupabaseData';
 import { useRealtimeVitals } from '@/hooks/useRealtimeVitals';
-import { Loader2, Users } from 'lucide-react';
+import { Loader2, Users, Filter, ArrowUpDown } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+function getSeverityPriority(severity?: string | null): number {
+  if (!severity) return 3;
+
+  const normalized = severity.toLowerCase();
+  if (normalized === 'critical') return 1;
+  if (normalized === 'moderate' || normalized === 'warning') return 2;
+  return 3;
+}
 
 export function PatientVitalsDashboard() {
   const { patientsData, loading: patientsLoading, error: patientsError } = usePatientsDashboard();
+  const [filterBySeverity, setFilterBySeverity] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('severity');
 
   console.log('PatientVitalsDashboard:', {
     patientsCount: patientsData.length,
@@ -15,13 +27,47 @@ export function PatientVitalsDashboard() {
     patients: patientsData
   });
 
+  // Filter and sort patients
+  const sortedPatientsData = useMemo(() => {
+    // First, filter by severity
+    let filtered = [...patientsData];
+    if (filterBySeverity !== 'all') {
+      filtered = filtered.filter(({ patient }) => {
+        const severity = patient.severity?.toLowerCase() || 'stable';
+        return severity === filterBySeverity;
+      });
+    }
+
+    // Then, sort by selected criteria
+    return filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'severity':
+          const priorityA = getSeverityPriority(a.patient.severity);
+          const priorityB = getSeverityPriority(b.patient.severity);
+          return priorityA - priorityB;
+        
+        case 'name':
+          return a.patient.name.localeCompare(b.patient.name);
+        
+        case 'room':
+          return (a.roomNumber || '').localeCompare(b.roomNumber || '');
+        
+        case 'age':
+          return (a.patient.age || 0) - (b.patient.age || 0);
+        
+        default:
+          return 0;
+      }
+    });
+  }, [patientsData, filterBySeverity, sortBy]);
+
   // Extract patient IDs and severities for real-time vitals
-  const patientIds = useMemo(() => patientsData.map(p => p.patient.id), [patientsData]);
+  const patientIds = useMemo(() => sortedPatientsData.map(p => p.patient.id), [sortedPatientsData]);
   const patientSeverities = useMemo(() => {
     const map = new Map<string, string | null>();
-    patientsData.forEach(p => map.set(p.patient.id, p.patient.severity));
+    sortedPatientsData.forEach(p => map.set(p.patient.id, p.patient.severity));
     return map;
-  }, [patientsData]);
+  }, [sortedPatientsData]);
 
   const { vitalsData, loading: vitalsLoading } = useRealtimeVitals({
     patientIds,
@@ -67,19 +113,55 @@ export function PatientVitalsDashboard() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-4 py-3 border-b border-text-gray/10">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-bold text-text-dark">Patient Dashboard</h2>
           <div className="flex items-center gap-2">
             <Users className="h-4 w-4 text-text-gray" />
-            <span className="text-sm text-text-gray">{patientsData.length} patients</span>
+            <span className="text-sm text-text-gray">{sortedPatientsData.length}/{patientsData.length}</span>
+          </div>
+        </div>
+
+        {/* Filter and Sort Controls */}
+        <div className="flex items-center gap-2">
+          {/* Filter by Severity */}
+          <div className="flex items-center gap-2 flex-1">
+            <Filter className="h-3.5 w-3.5 text-text-gray" />
+            <Select value={filterBySeverity} onValueChange={setFilterBySeverity}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Patients</SelectItem>
+                <SelectItem value="critical">Critical</SelectItem>
+                <SelectItem value="moderate">Moderate</SelectItem>
+                <SelectItem value="warning">Warning</SelectItem>
+                <SelectItem value="stable">Stable</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Sort By */}
+          <div className="flex items-center gap-2 flex-1">
+            <ArrowUpDown className="h-3.5 w-3.5 text-text-gray" />
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Sort" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="severity">By Severity</SelectItem>
+                <SelectItem value="name">By Name</SelectItem>
+                <SelectItem value="room">By Room</SelectItem>
+                <SelectItem value="age">By Age</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
 
       {/* Patient List */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
-        <Accordion type="single" collapsible className="w-full">
-          {patientsData.map(({ patient, roomNumber, doctorName }) => (
+        <Accordion type="multiple" className="w-full">
+          {sortedPatientsData.map(({ patient, roomNumber, doctorName }) => (
             <PatientVitalsCard
               key={patient.id}
               patient={patient}
