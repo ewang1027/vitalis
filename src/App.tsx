@@ -29,6 +29,12 @@ const App = () => {
     setShowWelcome(false);
   };
 
+  const handleLogout = () => {
+    // Clear the welcome screen flag and show it again
+    sessionStorage.removeItem(WELCOME_SCREEN_KEY);
+    setShowWelcome(true);
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -37,7 +43,7 @@ const App = () => {
         {showWelcome && <WelcomeScreen onComplete={handleWelcomeComplete} />}
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Index />} />
+            <Route path="/" element={<Index onLogout={handleLogout} />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
