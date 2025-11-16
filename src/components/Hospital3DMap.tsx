@@ -1,4 +1,4 @@
-import React, { useRef, useState, Suspense } from 'react';
+import React, { useRef, useState, Suspense, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -16,7 +16,15 @@ interface Hospital3DMapProps {
   onCloseRoomPopup?: () => void;
 }
 
-// Room component
+// Room layout configuration for realistic hospital design
+interface RoomLayout {
+  position: [number, number, number];
+  size: [number, number, number];
+  rotation: number;
+  doorPosition: 'front' | 'back' | 'left' | 'right';
+}
+
+// Realistic Room component with walls, windows, and room-type specific styling
 function Room({
   position,
   size,
@@ -27,7 +35,10 @@ function Room({
   onClick,
   roomData,
   onEnterRoom,
-  onClosePopup
+  onClosePopup,
+  rotation = 0,
+  doorPosition = 'front',
+  roomType = 'patient'
 }: {
   position: [number, number, number];
   size: [number, number, number];
@@ -39,19 +50,21 @@ function Room({
   roomData?: Room;
   onEnterRoom?: (roomId: string) => void;
   onClosePopup?: () => void;
+  rotation?: number;
+  doorPosition?: 'front' | 'back' | 'left' | 'right';
+  roomType?: string;
 }) {
-  const meshRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const [hovered, setHovered] = useState(false);
 
   useFrame(() => {
-    if (meshRef.current) {
-      const targetY = isSelected ? 0.3 : hovered ? 0.15 : 0.1;
-      meshRef.current.position.y += (targetY - meshRef.current.position.y) * 0.1;
+    if (groupRef.current) {
+      const targetY = isSelected ? 0.15 : hovered ? 0.08 : 0;
+      groupRef.current.position.y += (targetY - groupRef.current.position.y) * 0.1;
     }
   });
 
   const getColor = () => {
-    // Maintain status color even when selected
     switch (status) {
       case 'ready': return '#10b981';
       case 'needs-attention': return '#ef4444';
@@ -60,61 +73,230 @@ function Room({
     }
   };
 
-  return (
-    <group position={position}>
-      {/* Floor */}
-      <mesh position={[0, 0, 0]} receiveShadow>
-        <boxGeometry args={[size[0], 0.05, size[2]]} />
-        <meshStandardMaterial color="#f5f5f5" />
-      </mesh>
+  // Room type specific colors and styling
+  const getRoomTypeColor = () => {
+    switch (roomType) {
+      case 'icu': return '#dbeafe'; // Light blue
+      case 'operating': return '#fce7f3'; // Light pink
+      case 'emergency': return '#fef3c7'; // Light yellow
+      case 'patient': return '#f0fdf4'; // Light green
+      case 'specialty': return '#f3e8ff'; // Light purple
+      default: return '#f8f9fa';
+    }
+  };
 
-      {/* Walls */}
-      <mesh
-        ref={meshRef}
-        position={[0, size[1] / 2, 0]}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          setHovered(true);
-          if (document.body.style) {
-            document.body.style.cursor = 'pointer';
-          }
-        }}
-        onPointerOut={() => {
-          setHovered(false);
-          if (document.body.style) {
-            document.body.style.cursor = 'auto';
-          }
-        }}
-        castShadow
-      >
-        <boxGeometry args={[size[0] - 0.1, size[1], size[2] - 0.1]} />
-        <meshStandardMaterial
-          color={getColor()}
-          transparent
-          opacity={isSelected ? 0.9 : hovered ? 0.7 : 0.5}
-          emissive={getColor()}
-          emissiveIntensity={isSelected ? 0.3 : hovered ? 0.2 : 0.1}
-        />
-      </mesh>
+  const getAccentColor = () => {
+    switch (roomType) {
+      case 'icu': return '#3b82f6'; // Blue
+      case 'operating': return '#ec4899'; // Pink
+      case 'emergency': return '#f59e0b'; // Amber
+      case 'patient': return '#10b981'; // Green
+      case 'specialty': return '#a855f7'; // Purple
+      default: return '#6b7280';
+    }
+  };
+
+  const wallThickness = 0.15;
+  const wallHeight = size[1];
+  const doorWidth = 1.0;
+  const doorHeight = 2.0;
+  const hasWindow = roomType === 'icu' || roomType === 'patient' || roomType === 'emergency';
+
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      <group ref={groupRef}>
+        {/* Floor with room type color */}
+        <mesh position={[0, 0.02, 0]} receiveShadow>
+          <boxGeometry args={[size[0], 0.05, size[2]]} />
+          <meshStandardMaterial color={getRoomTypeColor()} roughness={0.8} />
+        </mesh>
+
+        {/* Accent stripe on floor */}
+        <mesh position={[0, 0.03, -size[2] / 2 + 0.3]} receiveShadow>
+          <boxGeometry args={[size[0] - 0.2, 0.01, 0.2]} />
+          <meshStandardMaterial color={getAccentColor()} roughness={0.6} />
+        </mesh>
+
+        {/* Back Wall with window if applicable */}
+        {hasWindow ? (
+          <>
+            {/* Wall sections around window */}
+            <mesh position={[-size[0] / 4, wallHeight / 2, -size[2] / 2]} receiveShadow castShadow>
+              <boxGeometry args={[size[0] / 2, wallHeight, wallThickness]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            <mesh position={[size[0] / 4, wallHeight / 2, -size[2] / 2]} receiveShadow castShadow>
+              <boxGeometry args={[size[0] / 2, wallHeight, wallThickness]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            {/* Window */}
+            <mesh position={[0, wallHeight / 2 + 0.5, -size[2] / 2 + wallThickness / 4]} castShadow>
+              <boxGeometry args={[1.2, 1.2, wallThickness / 2]} />
+              <meshStandardMaterial
+                color="#87ceeb"
+                transparent
+                opacity={0.3}
+                roughness={0.1}
+                metalness={0.1}
+              />
+            </mesh>
+            {/* Window frame */}
+            <mesh position={[0, wallHeight / 2 + 0.5, -size[2] / 2 + wallThickness / 8]}>
+              <boxGeometry args={[1.3, 0.05, wallThickness / 4]} />
+              <meshStandardMaterial color="#ffffff" roughness={0.5} />
+            </mesh>
+            <mesh position={[0, wallHeight / 2 + 0.5, -size[2] / 2 + wallThickness / 8]}>
+              <boxGeometry args={[0.05, 1.3, wallThickness / 4]} />
+              <meshStandardMaterial color="#ffffff" roughness={0.5} />
+            </mesh>
+          </>
+        ) : (
+          <mesh position={[0, wallHeight / 2, -size[2] / 2]} receiveShadow castShadow>
+            <boxGeometry args={[size[0], wallHeight, wallThickness]} />
+            <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+          </mesh>
+        )}
+
+        {/* Front Wall (with door gap) */}
+        {doorPosition === 'front' ? (
+          <>
+            <mesh position={[-size[0] / 2 + (size[0] - doorWidth) / 4, wallHeight / 2, size[2] / 2]} receiveShadow castShadow>
+              <boxGeometry args={[(size[0] - doorWidth) / 2, wallHeight, wallThickness]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            <mesh position={[size[0] / 2 - (size[0] - doorWidth) / 4, wallHeight / 2, size[2] / 2]} receiveShadow castShadow>
+              <boxGeometry args={[(size[0] - doorWidth) / 2, wallHeight, wallThickness]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            {/* Door frame */}
+            <mesh position={[0, doorHeight / 2, size[2] / 2 - wallThickness / 2]} receiveShadow castShadow>
+              <boxGeometry args={[doorWidth, doorHeight, wallThickness / 2]} />
+              <meshStandardMaterial
+                color={getColor()}
+                transparent
+                opacity={0.3}
+                roughness={0.3}
+                metalness={0.1}
+              />
+            </mesh>
+          </>
+        ) : (
+          <mesh position={[0, wallHeight / 2, size[2] / 2]} receiveShadow castShadow>
+            <boxGeometry args={[size[0], wallHeight, wallThickness]} />
+            <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+          </mesh>
+        )}
+
+        {/* Left Wall (with door gap if needed) */}
+        {doorPosition === 'left' ? (
+          <>
+            <mesh position={[-size[0] / 2, wallHeight / 2, -size[2] / 2 + (size[2] - doorWidth) / 4]} receiveShadow castShadow>
+              <boxGeometry args={[wallThickness, wallHeight, (size[2] - doorWidth) / 2]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            <mesh position={[-size[0] / 2, wallHeight / 2, size[2] / 2 - (size[2] - doorWidth) / 4]} receiveShadow castShadow>
+              <boxGeometry args={[wallThickness, wallHeight, (size[2] - doorWidth) / 2]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            <mesh position={[-size[0] / 2 + wallThickness / 2, doorHeight / 2, 0]} receiveShadow castShadow>
+              <boxGeometry args={[wallThickness / 2, doorHeight, doorWidth]} />
+              <meshStandardMaterial
+                color={getColor()}
+                transparent
+                opacity={0.3}
+                roughness={0.3}
+                metalness={0.1}
+              />
+            </mesh>
+          </>
+        ) : (
+          <mesh position={[-size[0] / 2, wallHeight / 2, 0]} receiveShadow castShadow>
+            <boxGeometry args={[wallThickness, wallHeight, size[2]]} />
+            <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+          </mesh>
+        )}
+
+        {/* Right Wall (with door gap if needed) */}
+        {doorPosition === 'right' ? (
+          <>
+            <mesh position={[size[0] / 2, wallHeight / 2, -size[2] / 2 + (size[2] - doorWidth) / 4]} receiveShadow castShadow>
+              <boxGeometry args={[wallThickness, wallHeight, (size[2] - doorWidth) / 2]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            <mesh position={[size[0] / 2, wallHeight / 2, size[2] / 2 - (size[2] - doorWidth) / 4]} receiveShadow castShadow>
+              <boxGeometry args={[wallThickness, wallHeight, (size[2] - doorWidth) / 2]} />
+              <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+            </mesh>
+            <mesh position={[size[0] / 2 - wallThickness / 2, doorHeight / 2, 0]} receiveShadow castShadow>
+              <boxGeometry args={[wallThickness / 2, doorHeight, doorWidth]} />
+              <meshStandardMaterial
+                color={getColor()}
+                transparent
+                opacity={0.3}
+                roughness={0.3}
+                metalness={0.1}
+              />
+            </mesh>
+          </>
+        ) : (
+          <mesh position={[size[0] / 2, wallHeight / 2, 0]} receiveShadow castShadow>
+            <boxGeometry args={[wallThickness, wallHeight, size[2]]} />
+            <meshStandardMaterial color="#e9ecef" roughness={0.9} />
+          </mesh>
+        )}
+
+        {/* Status indicator light on wall */}
+        <mesh position={[0, wallHeight - 0.3, size[2] / 2 - 0.1]}>
+          <sphereGeometry args={[0.15, 16, 16]} />
+          <meshStandardMaterial
+            color={getColor()}
+            emissive={getColor()}
+            emissiveIntensity={isSelected ? 1.0 : hovered ? 0.8 : 0.5}
+          />
+        </mesh>
+
+        {/* Invisible clickable area */}
+        <mesh
+          position={[0, wallHeight / 2, 0]}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClick();
+          }}
+          onPointerOver={(e) => {
+            e.stopPropagation();
+            setHovered(true);
+            if (document.body.style) {
+              document.body.style.cursor = 'pointer';
+            }
+          }}
+          onPointerOut={() => {
+            setHovered(false);
+            if (document.body.style) {
+              document.body.style.cursor = 'auto';
+            }
+          }}
+        >
+          <boxGeometry args={[size[0], wallHeight, size[2]]} />
+          <meshStandardMaterial transparent opacity={0} />
+        </mesh>
+      </group>
 
       {/* Room Label */}
       <Text
-        position={[0, size[1] + 0.3, 0]}
-        fontSize={0.3}
-        color={isSelected ? getColor() : '#374151'}
+        position={[0, wallHeight + 0.5, 0]}
+        fontSize={0.35}
+        color={isSelected ? getColor() : '#1f2937'}
         anchorX="center"
         anchorY="middle"
+        outlineWidth={0.02}
+        outlineColor="#ffffff"
       >
         {label}
       </Text>
 
       {/* Room Info Popup */}
       {isSelected && (
-        <Html position={[0, size[1] + 0.8, 0]} center>
+        <Html position={[0, wallHeight + 1.2, 0]} center>
           <div style={{
             background: 'white',
             borderRadius: '8px',
@@ -125,7 +307,6 @@ function Room({
             border: `2px solid ${getColor()}`,
             position: 'relative'
           }}>
-            {/* Close Button */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -188,18 +369,65 @@ function Room({
   );
 }
 
-// Corridor
-function Corridor({ position, length, width, rotation = 0 }: {
+// Enhanced Corridor with walls
+function Corridor({ position, length, width, rotation = 0, hasWalls = true }: {
   position: [number, number, number];
   length: number;
   width: number;
   rotation?: number;
+  hasWalls?: boolean;
 }) {
+  const wallThickness = 0.15;
+  const wallHeight = 2.8;
+
   return (
-    <mesh position={position} rotation={[0, rotation, 0]} receiveShadow>
-      <boxGeometry args={[length, 0.05, width]} />
-      <meshStandardMaterial color="#e5e7eb" />
-    </mesh>
+    <group position={position} rotation={[0, rotation, 0]}>
+      {/* Corridor floor */}
+      <mesh receiveShadow>
+        <boxGeometry args={[length, 0.05, width]} />
+        <meshStandardMaterial color="#d1d5db" roughness={0.9} />
+      </mesh>
+
+      {hasWalls && (
+        <>
+          {/* Left wall */}
+          <mesh position={[0, wallHeight / 2, -width / 2]} receiveShadow castShadow>
+            <boxGeometry args={[length, wallHeight, wallThickness]} />
+            <meshStandardMaterial color="#f3f4f6" roughness={0.9} />
+          </mesh>
+
+          {/* Right wall */}
+          <mesh position={[0, wallHeight / 2, width / 2]} receiveShadow castShadow>
+            <boxGeometry args={[length, wallHeight, wallThickness]} />
+            <meshStandardMaterial color="#f3f4f6" roughness={0.9} />
+          </mesh>
+        </>
+      )}
+    </group>
+  );
+}
+
+// Exterior wall component
+function ExteriorWall({ position, length, height, rotation = 0 }: {
+  position: [number, number, number];
+  length: number;
+  height: number;
+  rotation?: number;
+}) {
+  const wallThickness = 0.2;
+
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      <mesh position={[0, height / 2, 0]} receiveShadow castShadow>
+        <boxGeometry args={[length, height, wallThickness]} />
+        <meshStandardMaterial color="#cbd5e1" roughness={0.85} />
+      </mesh>
+      {/* Wall trim/accent at top */}
+      <mesh position={[0, height - 0.1, 0]} castShadow>
+        <boxGeometry args={[length, 0.2, wallThickness + 0.05]} />
+        <meshStandardMaterial color="#94a3b8" roughness={0.7} />
+      </mesh>
+    </group>
   );
 }
 
@@ -230,42 +458,360 @@ function LoadingFallback() {
   );
 }
 
-export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup }: Hospital3DMapProps) {
-  // Transform rooms from database into 3D positions
-  const room3DData = rooms.map((room, index) => {
-    // Use database positions if available, otherwise calculate default positions
-    const position: [number, number, number] = room.position_x !== null && room.position_y !== null && room.position_z !== null
-      ? [room.position_x, room.position_y, room.position_z]
-      : getDefaultPosition(index); // Fallback for rooms without positions
+// Waiting area furniture
+function WaitingChair({ position, rotation = 0 }: { position: [number, number, number]; rotation?: number }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      {/* Seat */}
+      <mesh position={[0, 0.25, 0]} castShadow>
+        <boxGeometry args={[0.5, 0.1, 0.5]} />
+        <meshStandardMaterial color="#4a5568" roughness={0.8} />
+      </mesh>
+      {/* Backrest */}
+      <mesh position={[0, 0.5, -0.2]} castShadow>
+        <boxGeometry args={[0.5, 0.5, 0.1]} />
+        <meshStandardMaterial color="#4a5568" roughness={0.8} />
+      </mesh>
+      {/* Legs */}
+      {[-0.2, 0.2].map((x, i) =>
+        [-0.2, 0.2].map((z, j) => (
+          <mesh key={`${i}-${j}`} position={[x, 0.125, z]} castShadow>
+            <cylinderGeometry args={[0.03, 0.03, 0.25, 8]} />
+            <meshStandardMaterial color="#2d3748" metalness={0.6} />
+          </mesh>
+        ))
+      )}
+    </group>
+  );
+}
 
-    return {
-      id: room.id,
-      position,
-      size: [2.5, 1.5, 2.5] as [number, number, number],
-      label: room.room_name || room.room_number,
-      roomData: room
-    };
-  });
+// Nurse station
+function NurseStation({ position, rotation = 0 }: { position: [number, number, number]; rotation?: number }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      {/* Desk */}
+      <mesh position={[0, 0.4, 0]} castShadow receiveShadow>
+        <boxGeometry args={[2, 0.8, 1.2]} />
+        <meshStandardMaterial color="#8b4513" roughness={0.7} />
+      </mesh>
+      {/* Counter top */}
+      <mesh position={[0, 0.82, 0]} castShadow>
+        <boxGeometry args={[2.1, 0.05, 1.3]} />
+        <meshStandardMaterial color="#d2b48c" roughness={0.4} />
+      </mesh>
+      {/* Computer monitor */}
+      <mesh position={[0, 1.1, 0]} castShadow>
+        <boxGeometry args={[0.5, 0.4, 0.05]} />
+        <meshStandardMaterial color="#1a1a1a" />
+      </mesh>
+      {/* Screen glow */}
+      <mesh position={[0, 1.1, 0.03]}>
+        <planeGeometry args={[0.45, 0.35]} />
+        <meshStandardMaterial color="#4a9eff" emissive="#4a9eff" emissiveIntensity={0.5} />
+      </mesh>
+    </group>
+  );
+}
 
-  // Helper function to calculate default positions for rooms without database positions
-  function getDefaultPosition(index: number): [number, number, number] {
-    const columns = 3;
-    const spacing = 3.5;
-    const row = Math.floor(index / columns);
-    const col = index % columns;
-    return [
-      (col - 1) * spacing,
-      0,
-      (row - 1) * spacing
+// Decorative plant
+function Plant({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      {/* Pot */}
+      <mesh position={[0, 0.15, 0]} castShadow>
+        <cylinderGeometry args={[0.15, 0.2, 0.3, 8]} />
+        <meshStandardMaterial color="#8b4513" roughness={0.9} />
+      </mesh>
+      {/* Plant leaves */}
+      {[0, Math.PI / 3, 2 * Math.PI / 3, Math.PI, 4 * Math.PI / 3, 5 * Math.PI / 3].map((angle, i) => (
+        <mesh key={i} position={[Math.cos(angle) * 0.15, 0.4, Math.sin(angle) * 0.15]} castShadow>
+          <sphereGeometry args={[0.12, 8, 8]} />
+          <meshStandardMaterial color="#2d5016" roughness={0.9} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// Directional sign
+function DirectionalSign({ position, rotation = 0, text, color = '#3b82f6' }: {
+  position: [number, number, number];
+  rotation?: number;
+  text: string;
+  color?: string;
+}) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      {/* Sign post */}
+      <mesh position={[0, 1.2, 0]} castShadow>
+        <cylinderGeometry args={[0.04, 0.04, 2.4, 8]} />
+        <meshStandardMaterial color="#6b7280" metalness={0.7} roughness={0.3} />
+      </mesh>
+      {/* Sign board */}
+      <mesh position={[0, 2.2, 0]} castShadow>
+        <boxGeometry args={[1.5, 0.4, 0.05]} />
+        <meshStandardMaterial color={color} roughness={0.6} />
+      </mesh>
+      {/* Sign text */}
+      <Text
+        position={[0, 2.2, 0.03]}
+        fontSize={0.15}
+        color="#ffffff"
+        anchorX="center"
+        anchorY="middle"
+        maxWidth={1.4}
+      >
+        {text}
+      </Text>
+      {/* Arrow */}
+      <mesh position={[0.5, 2.2, 0.03]} rotation={[0, 0, -Math.PI / 2]}>
+        <coneGeometry args={[0.08, 0.15, 3]} />
+        <meshStandardMaterial color="#ffffff" />
+      </mesh>
+    </group>
+  );
+}
+
+// Central circular hub component
+function CentralHub({ position }: { position: [number, number, number] }) {
+  return (
+    <group position={position}>
+      {/* Central circular platform */}
+      <mesh position={[0, 0.03, 0]} receiveShadow>
+        <cylinderGeometry args={[3.5, 3.5, 0.08, 32]} />
+        <meshStandardMaterial color="#e0e7ff" roughness={0.7} />
+      </mesh>
+
+      {/* Central help desk - circular counter */}
+      <mesh position={[0, 0.5, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[2, 2, 1, 32]} />
+        <meshStandardMaterial color="#8b4513" roughness={0.7} />
+      </mesh>
+
+      {/* Counter top */}
+      <mesh position={[0, 1.02, 0]} castShadow>
+        <cylinderGeometry args={[2.1, 2.1, 0.08, 32]} />
+        <meshStandardMaterial color="#d2b48c" roughness={0.4} />
+      </mesh>
+
+      {/* Multiple computer stations around the desk */}
+      {[0, Math.PI / 2, Math.PI, 3 * Math.PI / 2].map((angle, i) => (
+        <group key={i} rotation={[0, angle, 0]}>
+          <mesh position={[0, 1.3, 1.5]} castShadow>
+            <boxGeometry args={[0.4, 0.3, 0.05]} />
+            <meshStandardMaterial color="#1a1a1a" />
+          </mesh>
+          <mesh position={[0, 1.3, 1.52]}>
+            <planeGeometry args={[0.35, 0.25]} />
+            <meshStandardMaterial color="#4a9eff" emissive="#4a9eff" emissiveIntensity={0.6} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Central sign above */}
+      <mesh position={[0, 2.5, 0]}>
+        <cylinderGeometry args={[1.5, 1.5, 0.1, 32]} />
+        <meshStandardMaterial color="#3b82f6" emissive="#3b82f6" emissiveIntensity={0.3} />
+      </mesh>
+
+      <Text
+        position={[0, 2.5, 0.06]}
+        fontSize={0.3}
+        color="#ffffff"
+        anchorX="center"
+        anchorY="middle"
+      >
+        RECEPTION
+      </Text>
+    </group>
+  );
+}
+
+// Function to create circular hub-and-spoke hospital layout
+function createHospitalLayout(rooms: Room[]): {
+  roomLayouts: Map<string, RoomLayout & { id: string; label: string; roomData: Room; roomType: string }>;
+  corridors: Array<{ position: [number, number, number]; length: number; width: number; rotation: number; hasWalls: boolean }>;
+  furniture: Array<{ type: 'chair' | 'station' | 'plant' | 'sign' | 'hub'; position: [number, number, number]; rotation?: number; text?: string; color?: string }>;
+  exteriorWalls: Array<{ position: [number, number, number]; length: number; height: number; rotation: number }>;
+} {
+  const roomLayouts = new Map<string, RoomLayout & { id: string; label: string; roomData: Room; roomType: string }>();
+  const corridors: Array<{ position: [number, number, number]; length: number; width: number; rotation: number; hasWalls: boolean }> = [];
+  const furniture: Array<{ type: 'chair' | 'station' | 'plant' | 'sign' | 'hub'; position: [number, number, number]; rotation?: number; text?: string; color?: string }> = [];
+  const exteriorWalls: Array<{ position: [number, number, number]; length: number; height: number; rotation: number }> = [];
+
+  const hubRadius = 3.5; // Central hub radius
+  const corridorWidth = 2.5;
+  const roomSpacing = 0.6;
+
+  // Add central hub
+  furniture.push({ type: 'hub', position: [0, 0, 0] });
+
+  // Categorize rooms by type
+  const icuRooms = rooms.filter(r => r.room_type?.toLowerCase().includes('icu') || r.room_type?.toLowerCase().includes('intensive'));
+  const emergencyRooms = rooms.filter(r => r.room_type?.toLowerCase().includes('emergency') || r.room_type?.toLowerCase().includes('er'));
+  const operatingRooms = rooms.filter(r => r.room_type?.toLowerCase().includes('operating') || r.room_type?.toLowerCase().includes('surgery') || r.room_type?.toLowerCase().includes('or'));
+  const patientRooms = rooms.filter(r =>
+    !icuRooms.includes(r) && !emergencyRooms.includes(r) && !operatingRooms.includes(r) &&
+    (r.room_type?.toLowerCase().includes('patient') || r.room_type?.toLowerCase().includes('ward') || !r.room_type)
+  );
+  const specialtyRooms = rooms.filter(r =>
+    !icuRooms.includes(r) && !emergencyRooms.includes(r) && !operatingRooms.includes(r) && !patientRooms.includes(r)
+  );
+
+  // Room sizes by type
+  const roomSizes = {
+    icu: [3.5, 2.8, 3] as [number, number, number],
+    operating: [3.8, 3, 3.5] as [number, number, number],
+    emergency: [3, 2.6, 2.8] as [number, number, number],
+    patient: [2.6, 2.6, 2.4] as [number, number, number],
+    specialty: [2.8, 2.6, 2.8] as [number, number, number],
+  };
+
+  // Entrance/exit angles (gaps in the circle)
+  const entranceAngle1 = Math.PI / 4; // 45 degrees (northeast)
+  const entranceAngle2 = Math.PI + Math.PI / 4; // 225 degrees (southwest)
+  const entranceGapSize = Math.PI / 8; // Gap size for each entrance
+
+  // Combine all rooms with their types
+  const allRoomsWithTypes = [
+    ...icuRooms.map(r => ({ room: r, type: 'icu' as const })),
+    ...operatingRooms.map(r => ({ room: r, type: 'operating' as const })),
+    ...emergencyRooms.map(r => ({ room: r, type: 'emergency' as const })),
+    ...patientRooms.map(r => ({ room: r, type: 'patient' as const })),
+    ...specialtyRooms.map(r => ({ room: r, type: 'specialty' as const })),
+  ];
+
+  const totalRooms = allRoomsWithTypes.length;
+
+  if (totalRooms > 0) {
+    // Calculate available angle (full circle minus two entrance gaps)
+    const totalGapAngle = entranceGapSize * 2;
+    const availableAngle = 2 * Math.PI - totalGapAngle;
+    const anglePerRoom = availableAngle / totalRooms;
+
+    // Distance from center to room (back of room touches perimeter)
+    const circleRadius = hubRadius + corridorWidth + 3;
+
+    let currentAngle = 0;
+    let roomIndex = 0;
+
+    for (let i = 0; i < totalRooms; i++) {
+      // Skip entrance gaps
+      if (Math.abs(currentAngle - entranceAngle1) < entranceGapSize / 2) {
+        currentAngle += entranceGapSize;
+      }
+      if (Math.abs(currentAngle - entranceAngle2) < entranceGapSize / 2) {
+        currentAngle += entranceGapSize;
+      }
+
+      const { room, type } = allRoomsWithTypes[roomIndex];
+      const roomSize = roomSizes[type];
+
+      const x = Math.cos(currentAngle) * circleRadius;
+      const z = Math.sin(currentAngle) * circleRadius;
+
+      roomLayouts.set(room.id, {
+        id: room.id,
+        label: room.room_name || room.room_number,
+        roomData: room,
+        roomType: type,
+        position: [x, 0, z],
+        size: roomSize,
+        rotation: -currentAngle + Math.PI / 2, // Face inward toward center
+        doorPosition: 'front'
+      });
+
+      // Add radial corridor from hub to room
+      const corridorLength = circleRadius - hubRadius - corridorWidth / 2;
+      const corridorMidRadius = hubRadius + corridorLength / 2 + corridorWidth / 2;
+      const corridorX = Math.cos(currentAngle) * corridorMidRadius;
+      const corridorZ = Math.sin(currentAngle) * corridorMidRadius;
+
+      corridors.push({
+        position: [corridorX, 0, corridorZ],
+        length: corridorLength,
+        width: 1.5,
+        rotation: -currentAngle + Math.PI / 2,
+        hasWalls: false
+      });
+
+      currentAngle += anglePerRoom;
+      roomIndex++;
+    }
+
+    // Add pod signs at key positions
+    const podMarkers = [
+      { angle: 0, label: 'ICU', color: '#3b82f6' },
+      { angle: Math.PI / 2, label: 'OR', color: '#ec4899' },
+      { angle: Math.PI, label: 'EMERGENCY', color: '#f59e0b' },
+      { angle: 3 * Math.PI / 2, label: 'PATIENTS', color: '#10b981' },
     ];
+
+    podMarkers.forEach(marker => {
+      const signRadius = hubRadius + 2;
+      const signX = Math.cos(marker.angle) * signRadius;
+      const signZ = Math.sin(marker.angle) * signRadius;
+
+      furniture.push({
+        type: 'sign',
+        position: [signX, 0, signZ],
+        rotation: -marker.angle + Math.PI / 2,
+        text: marker.label,
+        color: marker.color
+      });
+    });
+
+    // Add entrance signs at gaps
+    const entrance1X = Math.cos(entranceAngle1) * (circleRadius + 1.5);
+    const entrance1Z = Math.sin(entranceAngle1) * (circleRadius + 1.5);
+    furniture.push({
+      type: 'sign',
+      position: [entrance1X, 0, entrance1Z],
+      rotation: -entranceAngle1 + Math.PI / 2,
+      text: 'ENTRANCE',
+      color: '#6b7280'
+    });
+
+    const entrance2X = Math.cos(entranceAngle2) * (circleRadius + 1.5);
+    const entrance2Z = Math.sin(entranceAngle2) * (circleRadius + 1.5);
+    furniture.push({
+      type: 'sign',
+      position: [entrance2X, 0, entrance2Z],
+      rotation: -entranceAngle2 + Math.PI / 2,
+      text: 'EXIT',
+      color: '#6b7280'
+    });
+
+    // Add waiting chairs around the hub
+    for (let i = 0; i < 8; i++) {
+      const chairAngle = (i * Math.PI) / 4;
+      const chairRadius = hubRadius + 0.8;
+      furniture.push({
+        type: 'chair',
+        position: [Math.cos(chairAngle) * chairRadius, 0, Math.sin(chairAngle) * chairRadius],
+        rotation: -chairAngle + Math.PI / 2
+      });
+    }
+
+    // Add plants between some chairs
+    for (let i = 0; i < 4; i++) {
+      const plantAngle = (i * Math.PI) / 2 + Math.PI / 4;
+      const plantRadius = hubRadius + 0.9;
+      furniture.push({
+        type: 'plant',
+        position: [Math.cos(plantAngle) * plantRadius, 0, Math.sin(plantAngle) * plantRadius]
+      });
+    }
   }
 
-  // Fixed corridors - these could also come from database in the future
-  const corridors = [
-    { position: [0, 0, 0] as [number, number, number], length: 16, width: 2, rotation: 0 },
-    { position: [-3, 0, -1] as [number, number, number], length: 8, width: 1.5, rotation: Math.PI / 2 },
-    { position: [3, 0, -1] as [number, number, number], length: 8, width: 1.5, rotation: Math.PI / 2 },
-  ];
+  // No exterior walls needed - rooms form the perimeter themselves!
+
+  return { roomLayouts, corridors, furniture, exteriorWalls };
+}
+
+export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, onEnterRoom, onCloseRoomPopup }: Hospital3DMapProps) {
+  // Generate hospital layout using intelligent positioning
+  const { roomLayouts, corridors, furniture, exteriorWalls } = useMemo(() => createHospitalLayout(rooms), [rooms]);
 
   const getRoomStatus = (roomId: string): 'ready' | 'needs-attention' | 'occupied' => {
     const room = rooms.find(r => r.id === roomId);
@@ -292,31 +838,36 @@ export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', background: 'linear-gradient(to bottom, #f3f4f6, #e5e7eb)' }}>
       <Suspense fallback={<LoadingFallback />}>
-        <Canvas shadows camera={{ position: [0, 12, 12], fov: 50 }}>
+        <Canvas shadows camera={{ position: [20, 14, 20], fov: 55 }}>
           {/* Lighting */}
-          <ambientLight intensity={0.4} />
+          <ambientLight intensity={0.5} />
           <directionalLight
-            position={[10, 10, 5]}
-            intensity={1}
+            position={[15, 20, 10]}
+            intensity={1.2}
             castShadow
             shadow-mapSize={[2048, 2048]}
+            shadow-camera-left={-40}
+            shadow-camera-right={40}
+            shadow-camera-top={40}
+            shadow-camera-bottom={-40}
           />
-          <hemisphereLight args={['#87ceeb', '#f0e68c', 0.6]} />
+          <hemisphereLight args={['#b8d4f0', '#f0e68c', 0.6]} />
+          <pointLight position={[0, 10, 0]} intensity={0.3} />
 
           {/* Controls */}
           <OrbitControls
             enableDamping
             dampingFactor={0.05}
-            minDistance={5}
-            maxDistance={30}
-            maxPolarAngle={Math.PI / 2.2}
+            minDistance={10}
+            maxDistance={60}
+            maxPolarAngle={Math.PI / 2.1}
+            target={[0, 0, 0]}
           />
 
-          {/* Ground */}
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
-            <planeGeometry args={[40, 40]} />
-            <meshStandardMaterial color="#d1d5db" />
-          </mesh>
+          {/* Exterior Walls */}
+          {exteriorWalls.map((wall, idx) => (
+            <ExteriorWall key={`wall-${idx}`} {...wall} />
+          ))}
 
           {/* Corridors */}
           {corridors.map((corridor, idx) => (
@@ -324,21 +875,40 @@ export function Hospital3DMap({ rooms, equipment, onRoomSelect, selectedRoomId, 
           ))}
 
           {/* Rooms */}
-          {room3DData.map((room) => (
+          {Array.from(roomLayouts.values()).map((roomLayout) => (
             <Room
-              key={room.id}
-              position={room.position}
-              size={room.size}
-              label={room.label}
-              status={getRoomStatus(room.id)}
-              roomId={room.id}
-              isSelected={selectedRoomId === room.id}
-              onClick={() => onRoomSelect(room.id)}
-              roomData={room.roomData}
+              key={roomLayout.id}
+              position={roomLayout.position}
+              size={roomLayout.size}
+              label={roomLayout.label}
+              status={getRoomStatus(roomLayout.id)}
+              roomId={roomLayout.id}
+              isSelected={selectedRoomId === roomLayout.id}
+              onClick={() => onRoomSelect(roomLayout.id)}
+              roomData={roomLayout.roomData}
               onEnterRoom={onEnterRoom}
               onClosePopup={onCloseRoomPopup}
+              rotation={roomLayout.rotation}
+              doorPosition={roomLayout.doorPosition}
+              roomType={roomLayout.roomType}
             />
           ))}
+
+          {/* Furniture and Signs */}
+          {furniture.map((item, idx) => {
+            if (item.type === 'chair') {
+              return <WaitingChair key={`chair-${idx}`} position={item.position} rotation={item.rotation} />;
+            } else if (item.type === 'station') {
+              return <NurseStation key={`station-${idx}`} position={item.position} rotation={item.rotation} />;
+            } else if (item.type === 'plant') {
+              return <Plant key={`plant-${idx}`} position={item.position} />;
+            } else if (item.type === 'sign') {
+              return <DirectionalSign key={`sign-${idx}`} position={item.position} rotation={item.rotation} text={item.text || ''} color={item.color} />;
+            } else if (item.type === 'hub') {
+              return <CentralHub key={`hub-${idx}`} position={item.position} />;
+            }
+            return null;
+          })}
         </Canvas>
       </Suspense>
 

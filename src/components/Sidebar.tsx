@@ -115,7 +115,7 @@ export function Sidebar({ user, activeTab, onTabChange, isMiddlePanelCollapsed, 
                 <ChevronDown className="h-3 w-3 flex-shrink-0" style={{ color: 'hsl(var(--text-white-dim))' }} />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuContent align="end" className="w-40">
             <DropdownMenuLabel className="font-normal">
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium">{user.name}</p>
