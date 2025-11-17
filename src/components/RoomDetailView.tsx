@@ -1,8 +1,8 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, PerspectiveCamera, Text } from '@react-three/drei';
 import { Button } from '@/components/ui/button';
-import { X, Info, Thermometer, Droplets, Battery, Wifi, WifiOff } from 'lucide-react';
+import { X, Info, Wifi, WifiOff } from 'lucide-react';
 import * as THREE from 'three';
 import {
   Dialog,
@@ -16,7 +16,7 @@ import { IVPump } from '@/components/3d/IVPump';
 import { MedicalMonitor } from '@/components/3d/MedicalMonitor';
 import { Wheelchair } from '@/components/3d/Wheelchair';
 import { useESP32Data } from '@/hooks/useESP32Data';
-import { useRealtimeVitals } from '@/hooks/useRealtimeVitals';
+import { useRoomEnvironment } from '@/hooks/useRoomEnvironment';
 import { Badge } from '@/components/ui/badge';
 
 // Type for room details from useRoomDetails hook
@@ -225,41 +225,15 @@ function Room({ roomData }: { roomData: Record<string, unknown> }) {
 
 export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
   const [selectedEquipment, setSelectedEquipment] = useState<Record<string, unknown> | null>(null);
-  const { data: esp32Data, isConnected: esp32Connected } = useESP32Data();
-
-  // Get patient ID and severity for real-time vitals
-  const patientId = room.patient?.id as string | undefined;
-  const patientIds = useMemo(() => patientId ? [patientId] : [], [patientId]);
-  const patientSeverities = useMemo(() => {
-    const map = new Map<string, string | null>();
-    if (patientId && room.patient?.severity) {
-      map.set(patientId, room.patient.severity as string);
-    }
-    return map;
-  }, [patientId, room.patient?.severity]);
-
-  // Use the same real-time vitals hook as the sidebar
-  const { vitalsData, loading: vitalsLoading } = useRealtimeVitals({
-    patientIds,
-    patientSeverities,
-    updateInterval: 3000,
+  const { isConnected: esp32Connected } = useESP32Data();
+  
+  // Get room environment with realistic simulation fallback
+  const roomId = (room.room?.id as string) || 'default';
+  const envData = useRoomEnvironment({
+    roomId,
     enableSimulation: true,
+    updateInterval: 2000,
   });
-
-  // Get vitals for this patient - memoize to ensure stable reference
-  const liveVitals = useMemo(() => {
-    if (!patientId) return null;
-    const vitals = vitalsData.get(patientId);
-    // Create a new object to force re-render when data changes
-    return vitals ? { ...vitals } : null;
-  }, [patientId, vitalsData]);
-
-  // Debug: log vitals updates
-  useEffect(() => {
-    if (liveVitals) {
-      console.log('RoomDetailView - Vitals updated:', liveVitals);
-    }
-  }, [liveVitals]);
 
   return (
     <div className="relative w-full h-full bg-background">
@@ -369,110 +343,70 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
         </div>
       )}
 
-      {/* Patient Vitals Monitor - Real-time data */}
-      {liveVitals && room.patient && (
-        <div className="absolute bottom-24 left-4 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg w-64">
+
+      {/* Room Environmental Sensors (ESP32 with Simulation Fallback) */}
+      {envData && (
+        <div className="absolute top-20 right-4 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg w-64">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold flex items-center gap-2">
-              <Info className="h-4 w-4 text-red-500" />
-              Patient Vitals
+              <Info className="h-4 w-4 text-blue-500" />
+              Room Environment
             </h3>
-            <Badge 
-              variant="default" 
-              className={`${liveVitals.dataSource === 'webhook' ? 'bg-green-500' : 'bg-blue-500'} text-white flex items-center gap-1 px-2 py-0`}
-            >
-              <Wifi className="h-3 w-3" />
-              {liveVitals.dataSource === 'webhook' ? 'Live' : 'Sim'}
-            </Badge>
+            {envData.dataSource === 'esp32' ? (
+              <Badge variant="default" className="bg-green-500 text-white flex items-center gap-1 px-2 py-0">
+                <Wifi className="h-3 w-3" />
+                Live
+              </Badge>
+            ) : (
+              <Badge variant="default" className="bg-blue-500 text-white flex items-center gap-1 px-2 py-0">
+                <Wifi className="h-3 w-3" />
+                Sim
+              </Badge>
+            )}
           </div>
           <div className="space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Heart Rate:</span>
-              <span className="font-medium text-red-600">
-                {liveVitals.heartRate ? `${liveVitals.heartRate} bpm` : 'N/A'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Blood Pressure:</span>
-              <span className="font-medium">
-                {liveVitals.bloodPressure || 'N/A'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">O2 Saturation:</span>
-              <span className="font-medium text-blue-600">
-                {liveVitals.oxygenSaturation ? `${liveVitals.oxygenSaturation}%` : 'N/A'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
+            <div className="flex justify-between">
               <span className="text-muted-foreground">Temperature:</span>
-              <span className="font-medium">
-                {liveVitals.temperature ? `${liveVitals.temperature}°F` : 'N/A'}
+              <span className="font-medium text-orange-600">
+                {envData.temperature.toFixed(1)}°C
               </span>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Room Environmental Sensors (ESP32) */}
-      <div className="absolute top-20 right-4 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg w-64">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold flex items-center gap-2">
-            <Info className="h-4 w-4 text-blue-500" />
-            Room Environment
-          </h3>
-          {esp32Connected ? (
-            <Badge variant="default" className="bg-green-500 text-white flex items-center gap-1 px-2 py-0">
-              <Wifi className="h-3 w-3" />
-              Live
-            </Badge>
-          ) : (
-            <Badge variant="secondary" className="flex items-center gap-1 px-2 py-0">
-              <WifiOff className="h-3 w-3" />
-              Offline
-            </Badge>
-          )}
-        </div>
-        <div className="space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Temperature:</span>
-            <span className="font-medium text-orange-600">
-              {esp32Data?.temperature ? `${esp32Data.temperature.toFixed(1)}°C` : 'N/A'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Humidity:</span>
-            <span className="font-medium text-blue-600">
-              {esp32Data?.humidity ? `${esp32Data.humidity.toFixed(1)}%` : 'N/A'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Motion Detected:</span>
-            <span className={`font-medium ${esp32Data?.motion ? 'text-red-600' : 'text-green-600'}`}>
-              {esp32Data?.motion !== undefined ? (esp32Data.motion ? 'Yes' : 'No') : 'N/A'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-muted-foreground">Light Level:</span>
-            <span className="font-medium">
-              {esp32Data?.light !== undefined ? `${esp32Data.light.toFixed(0)}` : 'N/A'}
-            </span>
-          </div>
-          {esp32Data?.customSensors?.distance !== undefined && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Humidity:</span>
+              <span className="font-medium text-blue-600">
+                {envData.humidity.toFixed(1)}%
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Motion Detected:</span>
+              <span className={`font-medium ${envData.motion ? 'text-red-600' : 'text-green-600'}`}>
+                {envData.motion ? 'Yes ⚡' : 'No'}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Patient in Bed:</span>
+              <span className={`font-semibold ${envData.inBed ? 'text-green-600' : 'text-orange-600'}`}>
+                {envData.inBed ? '✓ Yes' : '✗ No'}
+              </span>
+            </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Distance:</span>
               <span className="font-medium text-purple-600">
-                {`${esp32Data.customSensors.distance.toFixed(1)} cm`}
+                {envData.distance} cm
               </span>
             </div>
-          )}
-        </div>
-        {esp32Data?.deviceId && (
-          <div className="text-xs text-muted-foreground pt-2 mt-2 border-t">
-            Device: {esp32Data.deviceId.slice(-8)}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Light Level:</span>
+              <span className="font-medium text-yellow-600">
+                {envData.light} lux
+              </span>
+            </div>
           </div>
-        )}
-      </div>
+          <div className="text-xs text-muted-foreground pt-2 mt-2 border-t">
+            Source: {envData.dataSource === 'esp32' ? 'ESP32 Hardware' : 'Simulation'}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

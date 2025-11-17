@@ -66,7 +66,7 @@ const WelcomeScreen = ({ onComplete }: WelcomeScreenProps) => {
 
         {/* Welcome Text - Overlapping with logo bottom */}
         <h1 className="text-6xl font-bold text-white tracking-wide -mt-16">
-          Welcome, {displayName}
+          Welcome, Nurse
         </h1>
 
         {/* Password Input */}
