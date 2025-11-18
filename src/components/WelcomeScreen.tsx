@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useCurrentUser } from "@/hooks/useSupabaseData";
-import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 
 interface WelcomeScreenProps {
   onComplete: () => void;
@@ -8,7 +8,6 @@ interface WelcomeScreenProps {
 
 const WelcomeScreen = ({ onComplete }: WelcomeScreenProps) => {
   const { user, loading } = useCurrentUser();
-  const [password, setPassword] = useState("");
   const [animationPhase, setAnimationPhase] = useState<
     "initial" | "showing-text" | "fading-out" | "complete"
   >("initial");
@@ -24,7 +23,7 @@ const WelcomeScreen = ({ onComplete }: WelcomeScreenProps) => {
     };
   }, []);
 
-  const handleLogin = () => {
+  const handleEnter = () => {
     // Start fade out animation
     setAnimationPhase("fading-out");
 
@@ -33,12 +32,6 @@ const WelcomeScreen = ({ onComplete }: WelcomeScreenProps) => {
       setAnimationPhase("complete");
       onComplete();
     }, 1000);
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleLogin();
-    }
   };
 
   // Show loading state if user data is still being fetched
@@ -69,25 +62,13 @@ const WelcomeScreen = ({ onComplete }: WelcomeScreenProps) => {
           Welcome, Nurse
         </h1>
 
-        {/* Password Input */}
-        <div className="flex flex-col items-center gap-3 mt-12">
-          <input
-            type="password"
-            placeholder="Enter password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyPress={handleKeyPress}
-            className="px-4 py-2 w-64 rounded-md bg-white/10 border border-white/30 text-white placeholder-white/60 focus:outline-none focus:ring-2 focus:ring-white/50 transition-all"
-          />
-
-          {/* Login Button */}
-          <Button
-            onClick={handleLogin}
-            className="w-64 bg-white/20 hover:bg-white/30 text-white border border-white/40 transition-all"
-          >
-            Login
-          </Button>
-        </div>
+        {/* Enter Button with Arrow */}
+        <button
+          onClick={handleEnter}
+          className="mt-12 group flex items-center justify-center w-16 h-16 rounded-full bg-white/20 hover:bg-white/30 border border-white/40 transition-all hover:scale-110"
+        >
+          <ArrowRight className="w-8 h-8 text-white group-hover:translate-x-1 transition-transform" />
+        </button>
       </div>
     </div>
   );
