@@ -24,23 +24,41 @@ class ESP32WebSocketService {
   private reconnectTimeout: number = 3000;
   private reconnectAttempts: number = 0;
   private maxReconnectAttempts: number = 10;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private messageHandlers: Set<MessageHandler> = new Set();
+  private users: number = 0;
   private url: string;
 
   constructor(url: string = 'ws://localhost:3001') {
     this.url = url;
   }
 
+  // Several hooks share this singleton (the room view mounts two), so count
+  // users and keep one socket open until the last one disconnects.
   connect(): void {
-    try {
-      this.ws = new WebSocket(this.url);
+    this.users++;
+    this.open();
+  }
 
-      this.ws.onopen = () => {
+  private open(): void {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+
+    try {
+      const ws = new WebSocket(this.url);
+      this.ws = ws;
+
+      ws.onopen = () => {
         console.log('Connected to ESP32 WebSocket server');
         this.reconnectAttempts = 0;
       };
 
-      this.ws.onmessage = (event) => {
+      ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
           this.notifyHandlers(message);
@@ -49,13 +67,15 @@ class ESP32WebSocketService {
         }
       };
 
-      this.ws.onerror = (error) => {
+      ws.onerror = (error) => {
         console.error('WebSocket error:', error);
       };
 
-      this.ws.onclose = () => {
+      ws.onclose = () => {
         console.log('Disconnected from ESP32 WebSocket server');
-        this.attemptReconnect();
+        if (this.ws !== ws) return;
+        this.ws = null;
+        if (this.users > 0) this.attemptReconnect();
       };
     } catch (error) {
       console.error('Error connecting to WebSocket:', error);
@@ -64,13 +84,15 @@ class ESP32WebSocketService {
   }
 
   private attemptReconnect(): void {
+    if (this.reconnectTimer) return;
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       this.reconnectAttempts++;
       console.log(
         `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
       );
-      setTimeout(() => {
-        this.connect();
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = null;
+        if (this.users > 0) this.open();
       }, this.reconnectTimeout);
     } else {
       console.error('Max reconnection attempts reached');
@@ -97,11 +119,19 @@ class ESP32WebSocketService {
   }
 
   disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
+    this.users = Math.max(0, this.users - 1);
+    if (this.users > 0) return;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
     }
-    this.messageHandlers.clear();
+    this.reconnectAttempts = 0;
+    if (this.ws) {
+      const ws = this.ws;
+      this.ws = null;
+      ws.close();
+    }
   }
 
   isConnected(): boolean {

@@ -16,7 +16,9 @@ export function useESP32Data(
   maxHistorySize: number = 50
 ): UseESP32DataReturn {
   const [data, setData] = useState<ESP32HardwareData | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [isConnected, setIsConnected] = useState(() =>
+    esp32WebSocket.isConnected()
+  );
   const [history, setHistory] = useState<ESP32HardwareData[]>([]);
   const [error, setError] = useState<string | null>(null);
 
