@@ -1,113 +1,60 @@
 # Vitalis
 
-Vitalis is a HackNYU project focused on improving patient wellness and monitoring by combining intuitive UI design, smart analytics, and seamless data tracking. Our vision is to create a personalized, adaptive system that gives users meaningful insights rather than just raw data.
+An operations dashboard for nursing facilities: a 3D ward map, patient and room status, a task queue, and a chat agent that can check patients in and out. Built at HackNYU 2025 (24 hours), where it was the 1st Overall Winner in the Healthcare track. The ESP32 firmware in `firmware/` and the end-to-end sensor wiring were finished after the hackathon. Forked from [SupratikPanuganti/HackNYU](https://github.com/SupratikPanuganti/HackNYU).
 
-- Inspiration  
-Healthcare often suffers from scattered data, low accessibility, and poor personalization. Patients and caregivers need real-time, actionable insights — not fragmented dashboards. We wanted to build something simple, elegant, and useful that could evolve into a real healthcare assistant system. Vitalis was born from that motivation.
+## How it works
 
+- **Frontend**: Vite, React, TypeScript, Tailwind and shadcn/ui. The ward map is react-three-fiber. It reads and writes Supabase directly with the anon key.
+- **Agent**: the chat calls OpenRouter from the browser with tool calling (check in, discharge, create task, get room context). The tools read and write Supabase.
+- **Sensor server** (`server/index.ts`): Express plus `ws` on port 3001. The ESP32 POSTs a reading to `/api/hardware` every 2 seconds, and the server pushes it to the dashboard over a WebSocket on the same port. The 3D room view shows those readings as Live and goes back to simulated values if nothing arrives for 10 seconds.
+- **Vitals**: patient vitals come from the Supabase `vitals` table and are simulated when there's no recent row. No sensor writes to that table yet.
 
-- What It Does  
+The Supabase schema isn't in this repo. The tables the app expects are typed in `src/lib/supabase.ts`.
 
-Vitalis provides:
-- **Real-time vitals monitoring** using ESP32 sensor inputs  
-- **Live dashboards** that show patient health status at a glance  
-- **Alerts and insights** based on sensor data  
-- **A clean UI** designed for simplicity and quick decision-making  
-- **Scalable architecture** to support single-patient or entire-ward setups  
+## Running it
 
-The platform is designed to eventually act as an on-device patient assistant, capable of interacting directly with patients and medical staff.
-
-
-
- How We Built It  
- 
-- **Hardware:** ESP32-based sensors sending vitals data  
-- **Backend:** Node.js + Express server for storing and serving health metrics  
-- **Frontend:** React-based UI for live dashboards and patient views  
-- **Database:** MongoDB (as needed)
-- **APIs:** Custom endpoints to receive sensor data from ESP32 modules  
-- **Deployment:** Hosted via GitHub + local server (update with your deployment method)
-
-We used GitHub for collaboration, and iterated quickly using short development cycles throughout HackNYU.
-
-
-- Challenges We Ran Into:
-  
-- **Real-time sensor communication:** Handling consistent data flow from ESP32 to backend  
-- **API limits & formatting:** Ensuring stable packet formatting and preventing desync  
-- **UI responsiveness:** Making sure the dashboard updated instantly without lag  
-- **Time pressure:** Turning a hardware/software hybrid concept into a working demo during a hackathon window  
-- **State management:** Designing a system simple enough to build quickly but flexible enough to scale
-
-
-- Accomplishments We’re Proud Of:
-  
-- Built a **fully functional, end-to-end system** that connects ESP32 hardware to a live dashboard  
-- Created a **clean, user-friendly interface** for patient health monitoring  
-- Implemented a working **real-time data pipeline** from sensors → backend → frontend  
-- Developed the foundation for a future **AI-driven, patient-facing assistant**  
-- Produced a scalable idea that can be expanded into a hospital-level solution
-
-- What We Learned:
-  
-- How to structure a **hardware → API → frontend** data pipeline  
-- Best practices for **ESP32 communication**, including JSON formatting and transmission frequency  
-- How to design interfaces for **fast mental parsing** in medical environments  
-- How to coordinate tasks efficiently during a hackathon with multiple moving parts  
-- That even small projects benefit from strong architecture decisions early on
-
-
-- What’s Next for Vitalis:
-  
-- Integrating **AI agents** to interact directly with patients  
-- Expanding multi-room support for entire hospital wards  
-- Adding **predictive analytics** (early detection of anomalies)  
-- Improving sensor accuracy and coverage  
-- Deploying a cloud-based backend for higher scalability  
-- Implementing role-based dashboards (nurse, doctor, admin, patient)  
-- Packaging into a plug-and-play system for rapid deployment in healthcare settings
-
-
-- Tech Stack:
-Hardware:
-- ESP32 sensors  
-- Peripheral health sensors (heart rate, temperature, SPO2, etc.)
-
-Software:
-- React (frontend)  
-- Node.js + Express (backend API)  
-- MongoDB (storage as needed)
-- REST APIs for sensor ingestion  
-
-
-## 🔧 Getting Started  
-
-### 1. Clone the Repository
-
-git clone https://github.com/SupratikPanuganti/HackNYU.git
-cd HackNYU
-
-### 2. Install Frontend Dependencies
-
-cd frontend
+```bash
 npm install
+npm run dev        # Vite on :8080 and the sensor server on :3001
+```
 
-### 3. Install Backend Dependencies
+Create a `.env` first:
 
-cd ../backend
-npm install
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+VITE_OPENROUTER_API_KEY=...
+```
 
-### 4. Run Frontend
+The OpenRouter key ends up in the frontend bundle, so don't host a build with a key you care about.
 
-npm run start
+To test the sensor path without hardware:
 
-### 5. Run Backend
+```bash
+curl -X POST localhost:3001/api/hardware -H "Content-Type: application/json" \
+  -d '{"deviceId":"TEST","temperature":22.4,"humidity":48,"light":400,"motion":false,"customSensors":{"distance":65,"inBed":true}}'
+```
 
-npm run dev
+`amplify.yml` builds the static frontend on AWS Amplify. The sensor server isn't part of that deploy, and the dashboard looks for it at `ws://localhost:3001`.
 
-### 6. Open
+## Firmware
 
-http://localhost:3000
+A PlatformIO project for an ESP32 DevKit v1 that acts as a room sensor node. Every 2 seconds it sends temperature, humidity, light, motion, and bed distance / in-bed to the sensor server. Fields from a failed sensor read are left out.
 
+| Part | ESP32 pin | Notes |
+| --- | --- | --- |
+| DHT22 (temp, humidity) | GPIO 4 | 10k pull-up to 3V3 if the board doesn't have one |
+| HC-SR501 PIR | GPIO 26 | Power from 5V (VIN) |
+| LDR + 10k resistor | GPIO 35 | 3V3, LDR, GPIO 35, 10k, GND. Lux is approximate |
+| HC-SR04 TRIG / ECHO | GPIO 19 / GPIO 18 | Power from 5V, put ECHO through a 1k/2k divider |
 
+The HC-SR04 is pointed at the mattress. Under 100 cm counts as in bed.
 
+```bash
+cd firmware
+cp include/secrets.h.example include/secrets.h   # WiFi and the server's LAN address
+pio run -e esp32dev -t upload
+pio device monitor
+```
+
+`pio run -e esp32dev-sim -t upload` builds a version that sends simulated readings (tagged `simulated: true`) so you can test with a bare board. The ESP32 only joins 2.4 GHz networks, and it has to reach port 3001 on the machine running `npm run dev`.
