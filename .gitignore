@@ -32,3 +32,6 @@ dist-ssr
 
 # Cursor
 .cursor/
+
+# Local Claude Code settings
+.claude/
