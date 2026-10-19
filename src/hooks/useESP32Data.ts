@@ -8,19 +8,13 @@ import {
 interface UseESP32DataReturn {
   data: ESP32HardwareData | null;
   isConnected: boolean;
-  history: ESP32HardwareData[];
-  error: string | null;
 }
 
-export function useESP32Data(
-  maxHistorySize: number = 50
-): UseESP32DataReturn {
+export function useESP32Data(): UseESP32DataReturn {
   const [data, setData] = useState<ESP32HardwareData | null>(null);
   const [isConnected, setIsConnected] = useState(() =>
     esp32WebSocket.isConnected()
   );
-  const [history, setHistory] = useState<ESP32HardwareData[]>([]);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Connect to WebSocket
@@ -31,19 +25,8 @@ export function useESP32Data(
       (message: WebSocketMessage) => {
         if (message.type === 'connection') {
           setIsConnected(true);
-          setError(null);
         } else if (message.type === 'hardware_update' && message.data) {
           setData(message.data);
-          setHistory((prev) => {
-            const newHistory = [message.data!, ...prev].slice(
-              0,
-              maxHistorySize
-            );
-            return newHistory;
-          });
-          setError(null);
-        } else if (message.type === 'error') {
-          setError(message.message || 'Unknown error occurred');
         }
 
         // Update connection status
@@ -56,7 +39,7 @@ export function useESP32Data(
       unsubscribe();
       esp32WebSocket.disconnect();
     };
-  }, [maxHistorySize]);
+  }, []);
 
-  return { data, isConnected, history, error };
+  return { data, isConnected };
 }
