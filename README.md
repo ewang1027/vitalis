@@ -18,13 +18,7 @@ npm install
 npm run dev        # Vite on :8080 and the sensor server on :3001
 ```
 
-Create a `.env` first:
-
-```
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
-VITE_OPENROUTER_API_KEY=...
-```
+Copy `.env.example` to `.env` and fill it in first.
 
 The OpenRouter key ends up in the frontend bundle, so don't host a build with a key you care about.
 
@@ -35,7 +29,7 @@ curl -X POST localhost:3001/api/hardware -H "Content-Type: application/json" \
   -d '{"deviceId":"TEST","temperature":22.4,"humidity":48,"light":400,"motion":false,"customSensors":{"distance":65,"inBed":true}}'
 ```
 
-`amplify.yml` builds the static frontend on AWS Amplify. The sensor server isn't part of that deploy, and the dashboard looks for it at `ws://localhost:3001`.
+`amplify.yml` builds the static frontend on AWS Amplify. The sensor server isn't part of that deploy, so run it somewhere the browser can reach and set `VITE_SERVER_URL` in the Amplify build settings (it's read at build time). An https site needs an https server URL, because browsers block `ws://` from https pages. Without it the dashboard looks for `localhost:3001`.
 
 ## Firmware
 

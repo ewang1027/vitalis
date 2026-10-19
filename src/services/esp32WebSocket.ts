@@ -1,3 +1,5 @@
+import { SERVER_WS_URL } from '@/lib/server';
+
 export interface ESP32HardwareData {
   deviceId?: string;
   timestamp: number;
@@ -29,7 +31,7 @@ class ESP32WebSocketService {
   private users: number = 0;
   private url: string;
 
-  constructor(url: string = 'ws://localhost:3001') {
+  constructor(url: string = SERVER_WS_URL) {
     this.url = url;
   }
 
