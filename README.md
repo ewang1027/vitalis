@@ -9,8 +9,6 @@ An operations dashboard for nursing facilities: a 3D ward map, patient and room 
 - **Sensor server** (`server/index.ts`): Express plus `ws` on port 3001. Each ESP32 POSTs a reading with its `roomId` to `/api/hardware` every 2 seconds. The server keeps the latest reading per room (`GET /api/hardware` lists them) and pushes each one to the dashboard over a WebSocket on the same port. A room's 3D view only shows the node whose `roomId` matches that room's `id` or `room_number`, and marks it Offline after 10 seconds of silence. Rooms with no node show simulated values marked Simulated. A reading without a `roomId` is filed under `default`.
 - **Vitals**: patient vitals come from the Supabase `vitals` table and are simulated when there's no recent row. No sensor writes to that table yet.
 
-The Supabase schema isn't in this repo. The tables the app expects are typed in `src/lib/supabase.ts`.
-
 ## Running it
 
 ```bash
@@ -18,7 +16,7 @@ npm install
 npm run dev        # Vite on :8080 and the sensor server on :3001
 ```
 
-Copy `.env.example` to `.env` and fill it in first.
+Copy `.env.example` to `.env` and fill it in first. For a new Supabase project, run `supabase/schema.sql` in the SQL editor. It was rebuilt from the app's queries rather than exported from the original project, and it has no seed data.
 
 The OpenRouter key ends up in the frontend bundle, so don't host a build with a key you care about.
 
