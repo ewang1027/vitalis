@@ -7,13 +7,13 @@ An operations dashboard for nursing facilities: a 3D ward map, patient and room 
 - **Frontend**: Vite, React, TypeScript, Tailwind and shadcn/ui. The ward map is react-three-fiber. It reads and writes Supabase directly with the anon key.
 - **Agent**: the chat calls OpenRouter with tool calling (check in, discharge, create task, get room context), going through the Express server's `POST /api/llm`, which adds the API key. If a model returns a server error the agent retries, then falls back to the next model. The tools read and write Supabase from the browser.
 - **Sensor server** (`server/index.ts`): Express plus `ws` on port 3001. Each ESP32 POSTs a reading with its `roomId` to `/api/hardware` every 2 seconds. The server keeps the latest reading per room (`GET /api/hardware` lists them) and pushes each one to the dashboard over a WebSocket on the same port. A room's 3D view only shows the node whose `roomId` matches that room's `id` or `room_number`, and marks it Offline after 10 seconds of silence. Rooms with no node show simulated values marked Simulated. A reading without a `roomId` is filed under `default`.
-- **Vitals**: patient vitals come from the Supabase `vitals` table and are simulated when there's no recent row. No sensor writes to that table yet.
+- **Vitals**: patient vitals are simulated. Nothing in this repo measures them, since the ESP32 is a room sensor and not a patient monitor. The vitals panel shows a row from the Supabase `vitals` table for 10 seconds after it loads or arrives, then switches to simulated values based on the patient's severity, and it doesn't mark which is which. Checking a patient in through the agent writes a placeholder row (75 bpm, 120/80).
 
 ## Running it
 
 ```bash
 npm install
-npm run dev        # Vite on :8080 and the sensor server on :3001
+npm run dev        # Vite on :8080 and the Express server on :3001
 ```
 
 Copy `.env.example` to `.env` and fill it in first. For a new Supabase project, run `supabase/schema.sql` in the SQL editor. It was rebuilt from the app's queries rather than exported from the original project, and it has no seed data.
@@ -49,4 +49,4 @@ pio run -e esp32dev -t upload
 pio device monitor
 ```
 
-`pio run -e esp32dev-sim -t upload` builds a version that sends simulated readings (tagged `simulated: true`) so you can test with a bare board. The ESP32 only joins 2.4 GHz networks, and it has to reach port 3001 on the machine running `npm run dev`.
+`pio run -e esp32dev-sim -t upload` builds a version that sends simulated readings (tagged `simulated: true`, and marked Simulated in the room view) so you can test with a bare board. The ESP32 only joins 2.4 GHz networks, and it has to reach port 3001 on the machine running `npm run dev`.
