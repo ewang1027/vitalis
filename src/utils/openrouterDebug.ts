@@ -1,16 +1,19 @@
 /**
  * OpenRouter Debugging Utilities
- * Use this to diagnose connection and API issues
+ * Use this to diagnose connection and API issues. Requests go through the
+ * server's /api/llm proxy, which holds the API key.
  */
 
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+import { SERVER_URL } from '@/lib/server';
+import { LLM_PROXY_URL } from '@/lib/openrouter';
+
+const OPENROUTER_API_URL = LLM_PROXY_URL;
 
 export interface DebugReport {
   timestamp: string;
   apiKeyConfigured: boolean;
   apiKeyValid: boolean;
-  networkReachable: boolean;
+  serverReachable: boolean;
   simpleRequestWorks: boolean;
   errors: string[];
   warnings: string[];
@@ -25,7 +28,7 @@ export async function runOpenRouterDiagnostics(): Promise<DebugReport> {
     timestamp: new Date().toISOString(),
     apiKeyConfigured: false,
     apiKeyValid: false,
-    networkReachable: false,
+    serverReachable: false,
     simpleRequestWorks: false,
     errors: [],
     warnings: [],
@@ -34,38 +37,30 @@ export async function runOpenRouterDiagnostics(): Promise<DebugReport> {
 
   console.group('🔍 OpenRouter Diagnostics');
 
-  // Check 1: API Key Configuration
-  console.log('1️⃣ Checking API key configuration...');
-  if (!OPENROUTER_API_KEY) {
-    report.errors.push('VITE_OPENROUTER_API_KEY is not set in environment variables');
-    report.recommendations.push('Create a .env file with VITE_OPENROUTER_API_KEY=your_key_here');
-    console.error('❌ API key not configured');
-  } else {
-    report.apiKeyConfigured = true;
-    console.log('✅ API key is configured');
-    console.log(`   Key prefix: ${OPENROUTER_API_KEY.substring(0, 10)}...`);
-    console.log(`   Key length: ${OPENROUTER_API_KEY.length} characters`);
-  }
-
-  // Check 2: Network Reachability
-  console.log('2️⃣ Checking network reachability to OpenRouter...');
+  // Check 1: Server reachable, and whether it has an API key
+  console.log(`1️⃣ Checking the server at ${SERVER_URL}...`);
   try {
-    const response = await fetch('https://openrouter.ai', {
-      method: 'HEAD',
-      mode: 'no-cors',
-    });
-    report.networkReachable = true;
-    console.log('✅ OpenRouter.ai is reachable');
+    const response = await fetch(`${SERVER_URL}/api/health`);
+    const health = await response.json();
+    report.serverReachable = true;
+    console.log('✅ Server is reachable');
+    if (health.llmConfigured) {
+      report.apiKeyConfigured = true;
+      console.log('✅ Server has an OpenRouter API key');
+    } else {
+      report.errors.push('OPENROUTER_API_KEY is not set on the server');
+      report.recommendations.push('Add OPENROUTER_API_KEY=your_key_here to .env and restart the server');
+      console.error('❌ API key not configured on the server');
+    }
   } catch (error) {
-    report.errors.push('Cannot reach OpenRouter.ai - network issue or firewall blocking');
-    report.recommendations.push('Check your internet connection');
-    report.recommendations.push('Check if firewall/proxy is blocking OpenRouter');
-    console.error('❌ Network unreachable:', error);
+    report.errors.push(`Cannot reach the server at ${SERVER_URL}`);
+    report.recommendations.push('Start it with npm run dev, or set VITE_SERVER_URL to where it runs');
+    console.error('❌ Server unreachable:', error);
   }
 
   // Check 3: Simple API Request
   if (report.apiKeyConfigured) {
-    console.log('3️⃣ Testing simple API request...');
+    console.log('2️⃣ Testing simple API request through the server...');
     try {
       const testMessage = {
         model: 'anthropic/claude-3-haiku',
@@ -80,9 +75,6 @@ export async function runOpenRouterDiagnostics(): Promise<DebugReport> {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'OpenRouter Diagnostics',
         },
         body: JSON.stringify(testMessage),
       });
@@ -130,7 +122,7 @@ export async function runOpenRouterDiagnostics(): Promise<DebugReport> {
   }
 
   // Check 4: Environment Setup
-  console.log('4️⃣ Checking environment setup...');
+  console.log('3️⃣ Checking environment setup...');
   console.log(`   Origin: ${window.location.origin}`);
   console.log(`   Protocol: ${window.location.protocol}`);
   
@@ -142,7 +134,7 @@ export async function runOpenRouterDiagnostics(): Promise<DebugReport> {
   console.log('\n📊 Summary:');
   console.log(`   API Key Configured: ${report.apiKeyConfigured ? '✅' : '❌'}`);
   console.log(`   API Key Valid: ${report.apiKeyValid ? '✅' : '❌'}`);
-  console.log(`   Network Reachable: ${report.networkReachable ? '✅' : '❌'}`);
+  console.log(`   Server Reachable: ${report.serverReachable ? '✅' : '❌'}`);
   console.log(`   Simple Request Works: ${report.simpleRequestWorks ? '✅' : '❌'}`);
 
   if (report.errors.length > 0) {
@@ -186,9 +178,6 @@ export async function testOpenRouterModels(): Promise<Record<string, any>> {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Model Test',
         },
         body: JSON.stringify({
           model,

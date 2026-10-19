@@ -16,14 +16,15 @@ import {
   createAlert,
   getAvailableStaff,
 } from './agentTools';
+import { LLM_PROXY_URL, llmNotConfiguredMessage } from '@/lib/openrouter';
 
 /**
  * Agent Orchestrator
- * Main multimodal agentic workflow using OpenRouter
+ * Main multimodal agentic workflow using OpenRouter, called through the
+ * server's /api/llm proxy so the API key stays server-side
  */
 
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_API_URL = LLM_PROXY_URL;
 
 // Model options with fallbacks
 // Using Haiku as primary - it's faster, more stable, and less prone to 500 errors
@@ -32,11 +33,6 @@ const MODELS = {
   fallback: 'anthropic/claude-3.5-sonnet',
   backup: 'anthropic/claude-3-sonnet',
 };
-
-// Validate API key on module load
-if (!OPENROUTER_API_KEY) {
-  console.error('❌ OPENROUTER_API_KEY is not set! Please add it to your .env file.');
-}
 
 /**
  * Retry fetch with exponential backoff for server errors
@@ -57,11 +53,6 @@ async function fetchWithRetry(
     console.log('📤 [REQUEST] Model:', body.model);
     console.log('📤 [REQUEST] Message count:', body.messages?.length || 0);
     console.log('📤 [REQUEST] Tools count:', body.tools?.length || 0);
-    console.log('📤 [REQUEST] Headers:', {
-      hasAuth: !!(options.headers as any)?.['Authorization'],
-      hasReferer: !!(options.headers as any)?.['HTTP-Referer'],
-      hasTitle: !!(options.headers as any)?.['X-Title'],
-    });
     
     // Calculate approximate request size
     const requestSize = new Blob([options.body as string]).size;
@@ -106,6 +97,11 @@ async function fetchWithRetry(
           console.error('Failed to parse error response');
         }
         
+        return response;
+      }
+
+      // The server has no OpenRouter key: retrying won't help
+      if (await llmNotConfiguredMessage(response)) {
         return response;
       }
 
@@ -500,19 +496,10 @@ Examples:
   const toolResults: any[] = [];
   let assistantMessage = '';
 
-  // Validate API key before making request
-  if (!OPENROUTER_API_KEY) {
-    const errorMsg = 'OpenRouter API key is not configured. Please add VITE_OPENROUTER_API_KEY to your .env file.';
-    console.error('❌', errorMsg);
-    throw new Error(errorMsg);
-  }
-
   try {
     console.log('🚀 [AGENT] Starting agent request');
     console.log('📝 [AGENT] Message:', userMessage);
     console.log('📚 [AGENT] Conversation history length:', conversationHistory.length);
-    console.log('🔑 [AGENT] API key present:', OPENROUTER_API_KEY ? 'Yes' : 'No');
-    console.log('🔑 [AGENT] API key starts with:', OPENROUTER_API_KEY?.substring(0, 15) + '...');
 
     onUpdate?.({
       type: 'progress',
@@ -572,9 +559,6 @@ Examples:
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-              'HTTP-Referer': window.location.origin,
-              'X-Title': 'Hospital Management System',
             },
             body: requestBodyStr,
           },
@@ -583,6 +567,11 @@ Examples:
         );
 
         console.log('📥 [AGENT] Response status:', response.status, response.statusText);
+
+        // No OpenRouter key on the server, so other models won't work either
+        if (await llmNotConfiguredMessage(response)) {
+          break;
+        }
 
         // If successful, break out of loop
         if (response.ok) {
@@ -617,9 +606,6 @@ Examples:
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-                  'HTTP-Referer': window.location.origin,
-                  'X-Title': 'Hospital Management System',
                 },
                 body: JSON.stringify(simpleBody),
               },
@@ -665,6 +651,11 @@ Examples:
 
     if (!response) {
       throw lastError || new Error('Failed to get response from any model');
+    }
+
+    const notConfigured = await llmNotConfiguredMessage(response);
+    if (notConfigured) {
+      throw new Error(notConfigured);
     }
 
     if (!response.ok) {
@@ -829,9 +820,6 @@ Examples:
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${OPENROUTER_API_KEY}`,
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Hospital Management System',
         },
         body: JSON.stringify({
           model: successfulModel, // Use same model as initial request

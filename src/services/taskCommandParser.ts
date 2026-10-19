@@ -1,4 +1,5 @@
 import { VisualTaskType, TASK_CONFIGS } from '../types/visualTasks';
+import { LLM_PROXY_URL } from '@/lib/openrouter';
 
 export interface ParsedTaskCommand {
   type: VisualTaskType;
@@ -7,8 +8,6 @@ export interface ParsedTaskCommand {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   description?: string;
 }
-
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
 
 // Fallback regex-based parser for when AI is unavailable
 function parseCommandWithRegex(command: string, availableRoomIds: string[]): ParsedTaskCommand | null {
@@ -106,13 +105,9 @@ function parseCommandWithRegex(command: string, availableRoomIds: string[]): Par
   };
 }
 
-// AI-powered parser using OpenRouter
+// AI-powered parser using OpenRouter (through the server's /api/llm proxy).
+// Any failure, including a server with no OpenRouter key, falls back to regex.
 async function parseCommandWithAI(command: string, availableRoomIds: string[]): Promise<ParsedTaskCommand | null> {
-  if (!OPENROUTER_API_KEY) {
-    console.warn('OpenRouter API key not found, falling back to regex parser');
-    return parseCommandWithRegex(command, availableRoomIds);
-  }
-
   const systemPrompt = `You are a hospital task command parser. Parse natural language commands into structured task objects.
 
 Available task types:
@@ -142,12 +137,10 @@ Respond ONLY with a valid JSON object in this exact format:
 If the command is invalid or unclear, respond with: {"error": "explanation"}`;
 
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetch(LLM_PROXY_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': window.location.origin,
       },
       body: JSON.stringify({
         model: 'meta-llama/llama-3.1-8b-instruct:free',

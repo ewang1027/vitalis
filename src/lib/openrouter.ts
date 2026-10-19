@@ -1,6 +1,23 @@
-// OpenRouter API integration
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+// OpenRouter API integration. Requests go through the Express server
+// (server/index.ts, POST /api/llm), which adds the API key, so the key never
+// reaches the browser. The body is the same one OpenRouter takes.
+import { SERVER_URL } from '@/lib/server';
+
+export const LLM_PROXY_URL = `${SERVER_URL}/api/llm`;
+
+/**
+ * If the server answered that it has no OpenRouter key, return its message.
+ * Retrying or switching models can't fix that, so callers stop early.
+ */
+export async function llmNotConfiguredMessage(response: Response): Promise<string | null> {
+  if (response.status !== 503) return null;
+  try {
+    const body = await response.clone().json();
+    return body?.error?.code === 'llm_not_configured' ? body.error.message : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -34,18 +51,11 @@ export async function sendChatMessage(
   messages: ChatMessage[],
   model: string = 'anthropic/claude-3.5-sonnet'
 ): Promise<string> {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('OpenRouter API key is not configured. Please add VITE_OPENROUTER_API_KEY to your .env file.');
-  }
-
   try {
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await fetch(LLM_PROXY_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'HackNYU Hospital Assistant'
       },
       body: JSON.stringify({
         model,

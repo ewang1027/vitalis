@@ -3,12 +3,20 @@ import cors from 'cors';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 
+// Pick up OPENROUTER_API_KEY (and PORT) from .env. Vite only hands VITE_
+// variables to the browser, so the key stays on this server.
+try {
+  process.loadEnvFile();
+} catch {
+  // no .env file, use the real environment
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '1mb' })); // agent requests carry the chat history
 
 // Store connected WebSocket clients
 const clients = new Set<WebSocket>();
@@ -84,12 +92,83 @@ app.get('/api/hardware', (req, res) => {
   res.json({ timestamp: Date.now(), rooms: Object.fromEntries(latestByRoom) });
 });
 
+// OpenRouter proxy. The frontend sends the same body it used to send to
+// OpenRouter directly, and this adds the API key.
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+// Only the models the app uses, so the key can't be spent on anything else.
+const LLM_MODELS = new Set([
+  'anthropic/claude-3-haiku',
+  'anthropic/claude-3.5-sonnet',
+  'anthropic/claude-3-sonnet',
+  'meta-llama/llama-3.1-8b-instruct:free',
+]);
+const LLM_MAX_TOKENS = 2000;
+
+app.post('/api/llm', async (req, res) => {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({
+      error: {
+        code: 'llm_not_configured',
+        message: 'OPENROUTER_API_KEY is not set on the server (add it to .env and restart the server)',
+      },
+    });
+    return;
+  }
+
+  const { model, messages, tools, tool_choice, temperature, max_tokens } = req.body ?? {};
+  if (typeof model !== 'string' || !LLM_MODELS.has(model)) {
+    res.status(400).json({ error: { message: `Model not allowed: ${String(model)}` } });
+    return;
+  }
+  if (!Array.isArray(messages) || messages.length === 0) {
+    res.status(400).json({ error: { message: 'messages must be a non-empty array' } });
+    return;
+  }
+
+  try {
+    const upstream = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': req.get('origin') || 'http://localhost:8080',
+        'X-Title': 'Vitalis',
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        tools,
+        tool_choice,
+        temperature,
+        max_tokens: Math.min(Number(max_tokens) || LLM_MAX_TOKENS, LLM_MAX_TOKENS),
+      }),
+    });
+    // Pass OpenRouter's status and body through so the frontend's retry and
+    // model fallback logic sees the same responses as before.
+    const body = await upstream.text();
+    res
+      .status(upstream.status)
+      .type(upstream.headers.get('content-type') || 'application/json')
+      .send(body);
+  } catch (error) {
+    console.error('OpenRouter request failed:', error);
+    res.status(502).json({
+      error: {
+        message: `Could not reach OpenRouter: ${error instanceof Error ? error.message : 'unknown error'}`,
+      },
+    });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     timestamp: Date.now(),
     connectedClients: clients.size,
+    llmConfigured: Boolean(process.env.OPENROUTER_API_KEY),
   });
 });
 
@@ -129,4 +208,5 @@ server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`HTTP API: http://localhost:${PORT}/api/hardware`);
   console.log(`WebSocket: ws://localhost:${PORT}`);
+  console.log(`LLM proxy: http://localhost:${PORT}/api/llm${process.env.OPENROUTER_API_KEY ? '' : ' (OPENROUTER_API_KEY not set)'}`);
 });

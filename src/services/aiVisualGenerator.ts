@@ -1,7 +1,5 @@
 import { VisualTask } from '../types/visualTasks';
-
-const OPENROUTER_API_KEY = import.meta.env.VITE_OPENROUTER_API_KEY;
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+import { LLM_PROXY_URL } from '@/lib/openrouter';
 
 export interface AIVisualParams {
   // Colors
@@ -49,11 +47,6 @@ export async function generateAIVisuals(task: VisualTask): Promise<AIVisualParam
     return visualCache.get(cacheKey)!;
   }
 
-  if (!OPENROUTER_API_KEY) {
-    console.warn('⚠️ No OpenRouter API key, using fallback visuals');
-    return getFallbackVisuals(task);
-  }
-
   try {
     const systemPrompt = `You are a visual effects designer for a hospital management 3D interface. Generate visual parameters for task animations based on the task description.
 
@@ -97,13 +90,11 @@ Consider:
 
 Generate creative, appropriate visual parameters.`;
 
-    const response = await fetch(OPENROUTER_API_URL, {
+    // Any failure (including a server with no OpenRouter key) falls back below.
+    const response = await fetch(LLM_PROXY_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'HackNYU Hospital Visual Generator'
       },
       body: JSON.stringify({
         model: 'anthropic/claude-3-haiku',
