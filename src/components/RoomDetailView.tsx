@@ -15,7 +15,6 @@ import { OxygenTank } from '@/components/3d/OxygenTank';
 import { IVPump } from '@/components/3d/IVPump';
 import { MedicalMonitor } from '@/components/3d/MedicalMonitor';
 import { Wheelchair } from '@/components/3d/Wheelchair';
-import { useESP32Data } from '@/hooks/useESP32Data';
 import { useRoomEnvironment } from '@/hooks/useRoomEnvironment';
 import { Badge } from '@/components/ui/badge';
 
@@ -225,12 +224,11 @@ function Room({ roomData }: { roomData: Record<string, unknown> }) {
 
 export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
   const [selectedEquipment, setSelectedEquipment] = useState<Record<string, unknown> | null>(null);
-  const { isConnected: esp32Connected } = useESP32Data();
-  
-  // Get room environment with realistic simulation fallback
-  const roomId = (room.room?.id as string) || 'default';
+
+  // This room's own sensor node, or simulated values if it has none
   const envData = useRoomEnvironment({
-    roomId,
+    roomId: (room.room?.id as string) || null,
+    roomNumber: (room.room?.room_number as string) || null,
     enableSimulation: true,
     updateInterval: 2000,
   });
@@ -344,7 +342,7 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
       )}
 
 
-      {/* Room Environmental Sensors (ESP32 with Simulation Fallback) */}
+      {/* Room Environmental Sensors (this room's ESP32, or simulated if it has none) */}
       {envData && (
         <div className="absolute top-20 right-4 bg-background/95 backdrop-blur border rounded-lg p-4 shadow-lg w-64">
           <div className="flex items-center justify-between mb-3">
@@ -352,15 +350,19 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
               <Info className="h-4 w-4 text-blue-500" />
               Room Environment
             </h3>
-            {envData.dataSource === 'esp32' ? (
+            {envData.dataSource === 'esp32-offline' ? (
+              <Badge variant="default" className="bg-gray-500 text-white flex items-center gap-1 px-2 py-0">
+                <WifiOff className="h-3 w-3" />
+                Offline
+              </Badge>
+            ) : envData.dataSource === 'simulated' || envData.simulatedNode ? (
+              <Badge variant="default" className="bg-blue-500 text-white flex items-center gap-1 px-2 py-0">
+                Simulated
+              </Badge>
+            ) : (
               <Badge variant="default" className="bg-green-500 text-white flex items-center gap-1 px-2 py-0">
                 <Wifi className="h-3 w-3" />
                 Live
-              </Badge>
-            ) : (
-              <Badge variant="default" className="bg-blue-500 text-white flex items-center gap-1 px-2 py-0">
-                <Wifi className="h-3 w-3" />
-                Sim
               </Badge>
             )}
           </div>
@@ -403,7 +405,13 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
             </div>
           </div>
           <div className="text-xs text-muted-foreground pt-2 mt-2 border-t">
-            Source: {envData.dataSource === 'esp32' ? 'ESP32 Hardware' : 'Simulation'}
+            {envData.dataSource === 'simulated'
+              ? 'Simulated: no sensor node in this room'
+              : `Sensor node${envData.deviceId ? ` ${envData.deviceId}` : ''}${envData.simulatedNode ? ' (sim firmware)' : ''}${
+                  envData.dataSource === 'esp32-offline' && envData.receivedAt
+                    ? `, offline since ${new Date(envData.receivedAt).toLocaleTimeString()}`
+                    : ''
+                }`}
           </div>
         </div>
       )}

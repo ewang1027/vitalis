@@ -16,6 +16,7 @@ const clients = new Set<WebSocket>();
 // ESP32 Hardware Data Interface
 interface ESP32HardwareData {
   deviceId?: string;
+  roomId: string;
   timestamp: number;
   temperature?: number;
   humidity?: number;
@@ -26,13 +27,27 @@ interface ESP32HardwareData {
   customSensors?: Record<string, unknown>;
 }
 
+// Readings without a roomId (older firmware) are filed under this room.
+const DEFAULT_ROOM_ID = 'default';
+
+// Latest reading per room, sent to each dashboard when it connects.
+const latestByRoom = new Map<string, ESP32HardwareData>();
+
+function roomIdFrom(value: unknown): string {
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return DEFAULT_ROOM_ID;
+}
+
 // HTTP endpoint for ESP32 to send hardware data
 app.post('/api/hardware', (req, res) => {
   try {
     const hardwareData: ESP32HardwareData = {
       ...req.body,
+      roomId: roomIdFrom(req.body?.roomId),
       timestamp: Date.now(),
     };
+    latestByRoom.set(hardwareData.roomId, hardwareData);
 
     console.log('Received hardware data:', hardwareData);
 
@@ -51,6 +66,7 @@ app.post('/api/hardware', (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Hardware data received and broadcasted',
+      roomId: hardwareData.roomId,
       timestamp: hardwareData.timestamp,
     });
   } catch (error) {
@@ -61,6 +77,11 @@ app.post('/api/hardware', (req, res) => {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
+});
+
+// Latest reading for every room that has reported since the server started
+app.get('/api/hardware', (req, res) => {
+  res.json({ timestamp: Date.now(), rooms: Object.fromEntries(latestByRoom) });
 });
 
 // Health check endpoint
@@ -82,12 +103,13 @@ wss.on('connection', (ws: WebSocket) => {
   console.log('New WebSocket client connected');
   clients.add(ws);
 
-  // Send initial connection message
+  // Send initial connection message with the latest reading per room
   ws.send(
     JSON.stringify({
       type: 'connection',
       message: 'Connected to ESP32 hardware data stream',
       timestamp: Date.now(),
+      rooms: Object.fromEntries(latestByRoom),
     })
   );
 

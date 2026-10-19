@@ -1,45 +1,54 @@
 import { useEffect, useState } from 'react';
 import {
   esp32WebSocket,
-  ESP32HardwareData,
+  RoomReading,
   WebSocketMessage,
 } from '@/services/esp32WebSocket';
 
-interface UseESP32DataReturn {
-  data: ESP32HardwareData | null;
-  isConnected: boolean;
+function findReading(roomIds: string[]): RoomReading | null {
+  for (const id of roomIds) {
+    const reading = esp32WebSocket.getReading(id);
+    if (reading) return reading;
+  }
+  return null;
 }
 
-export function useESP32Data(): UseESP32DataReturn {
-  const [data, setData] = useState<ESP32HardwareData | null>(null);
-  const [isConnected, setIsConnected] = useState(() =>
-    esp32WebSocket.isConnected()
+/**
+ * Latest sensor node reading for one room. A node reports under its ROOM_ID,
+ * so pass every id that room can go by (rooms.id, rooms.room_number).
+ * Returns null when no node has reported for this room.
+ */
+export function useESP32Data(
+  roomIds: Array<string | null | undefined>
+): RoomReading | null {
+  const key = roomIds.filter((id): id is string => !!id).join('\n');
+  const [reading, setReading] = useState<RoomReading | null>(() =>
+    findReading(key ? key.split('\n') : [])
   );
 
   useEffect(() => {
-    // Connect to WebSocket
-    esp32WebSocket.connect();
+    const ids = key ? key.split('\n') : [];
+    setReading(findReading(ids));
 
-    // Subscribe to messages
+    esp32WebSocket.connect();
     const unsubscribe = esp32WebSocket.subscribe(
       (message: WebSocketMessage) => {
-        if (message.type === 'connection') {
-          setIsConnected(true);
-        } else if (message.type === 'hardware_update' && message.data) {
-          setData(message.data);
+        if (
+          message.type === 'connection' ||
+          (message.type === 'hardware_update' &&
+            message.data?.roomId &&
+            ids.includes(message.data.roomId))
+        ) {
+          setReading(findReading(ids));
         }
-
-        // Update connection status
-        setIsConnected(esp32WebSocket.isConnected());
       }
     );
 
-    // Cleanup on unmount
     return () => {
       unsubscribe();
       esp32WebSocket.disconnect();
     };
-  }, []);
+  }, [key]);
 
-  return { data, isConnected };
+  return reading;
 }

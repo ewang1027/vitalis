@@ -2,15 +2,17 @@
 //
 // Reads the room sensors and POSTs one JSON reading every 2 seconds to the
 // Express server (server/index.ts, POST /api/hardware). The server adds a
-// timestamp and broadcasts it to the dashboard over WebSocket as
-// {"type": "hardware_update", "data": ...}. The 3D room view
+// timestamp, keeps the latest reading per roomId, and broadcasts it to the
+// dashboard over WebSocket as {"type": "hardware_update", "data": ...}. The 3D
+// view of the room whose id or room_number matches ROOM_ID
 // (src/hooks/useRoomEnvironment.ts) uses temperature, humidity, light, motion,
-// customSensors.distance and customSensors.inBed, and switches back to its own
-// simulation if nothing arrives for 10 seconds.
+// customSensors.distance and customSensors.inBed, and shows the node as
+// offline if nothing arrives for 10 seconds.
 //
 // Payload:
 // {
 //   "deviceId": "AA:BB:CC:DD:EE:FF",
+//   "roomId": "room-101",         ROOM_ID from secrets.h
 //   "temperature": 22.4,          deg C (DHT22)
 //   "humidity": 48.1,             %RH (DHT22)
 //   "light": 412,                 lux, approximate (LDR divider)
@@ -40,6 +42,10 @@
 
 #ifndef SIMULATE_SENSORS
 #define SIMULATE_SENSORS 0
+#endif
+
+#ifndef ROOM_ID
+#warning "ROOM_ID is not set in secrets.h, the server will file readings under room \"default\""
 #endif
 
 // Pins (ESP32 DevKit v1)
@@ -221,6 +227,9 @@ void maintainWiFi() {
 String buildPayload(const Reading& r) {
   JsonDocument doc;
   doc["deviceId"] = deviceId;
+#ifdef ROOM_ID
+  doc["roomId"] = ROOM_ID;
+#endif
   if (!isnan(r.temperature)) doc["temperature"] = round1(r.temperature);
   if (!isnan(r.humidity)) doc["humidity"] = round1(r.humidity);
   if (r.light >= 0) doc["light"] = r.light;
@@ -280,6 +289,9 @@ void setup() {
   deviceId = WiFi.macAddress();
 #endif
   Serial.printf("Device ID: %s\n", deviceId.c_str());
+#ifdef ROOM_ID
+  Serial.printf("Room ID: %s\n", ROOM_ID);
+#endif
 
   startWiFi();
   Serial.printf("Connecting to %s", WIFI_SSID);

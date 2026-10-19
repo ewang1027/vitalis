@@ -1,92 +1,86 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useESP32Data } from './useESP32Data';
-import { simulateEnvironment, clearEnvironmentHistory, type EnvironmentData } from '@/utils/simulateEnvironment';
+import { simulateEnvironment, clearEnvironmentHistory } from '@/utils/simulateEnvironment';
 
-interface RoomEnvironmentData {
+// A node that hasn't reported for this long is shown as offline.
+const STALE_MS = 10000;
+
+export interface RoomEnvironmentData {
   temperature: number;
   humidity: number;
   motion: boolean;
   distance: number;
   inBed: boolean;
   light: number;
-  dataSource: 'esp32' | 'simulated';
+  // esp32: this room's node, fresh. esp32-offline: this room's node, stale.
+  // simulated: no node has reported for this room.
+  dataSource: 'esp32' | 'esp32-offline' | 'simulated';
+  deviceId?: string;
+  simulatedNode?: boolean; // the node runs the esp32dev-sim firmware
+  receivedAt?: number;
 }
 
 interface UseRoomEnvironmentOptions {
-  roomId: string;
+  roomId: string | null;
+  roomNumber?: string | null;
   enableSimulation?: boolean;
   updateInterval?: number;
 }
 
 /**
- * Hook that provides room environment data with fallback to realistic simulation
+ * Room environment from this room's own sensor node. Rooms with no node fall
+ * back to simulated values, marked dataSource 'simulated'.
  */
 export function useRoomEnvironment({
   roomId,
+  roomNumber,
   enableSimulation = true,
   updateInterval = 2000,
 }: UseRoomEnvironmentOptions): RoomEnvironmentData | null {
-  const { data: esp32Data, isConnected } = useESP32Data();
-  const [envData, setEnvData] = useState<RoomEnvironmentData | null>(null);
-  const simulationIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const lastESP32Update = useRef<number>(0);
+  const reading = useESP32Data([roomId, roomNumber]);
+  const [simulated, setSimulated] = useState<RoomEnvironmentData | null>(null);
+  const [, setTick] = useState(0);
+  const hasNode = reading !== null;
+  const simKey = roomId || roomNumber || 'unknown-room';
 
-  // Update with real ESP32 data when available
   useEffect(() => {
-    if (esp32Data && isConnected) {
-      lastESP32Update.current = Date.now();
-      
-      setEnvData({
-        temperature: esp32Data.temperature ?? 22,
-        humidity: esp32Data.humidity ?? 50,
-        motion: esp32Data.motion ?? false,
-        distance: esp32Data.customSensors?.distance ?? 150,
-        inBed: esp32Data.customSensors?.inBed ?? false,
-        light: esp32Data.light ?? 400,
-        dataSource: 'esp32',
-      });
+    if (hasNode) {
+      // Re-render so a node that goes quiet flips to offline.
+      const timer = setInterval(() => setTick((n) => n + 1), updateInterval);
+      return () => clearInterval(timer);
     }
-  }, [esp32Data, isConnected]);
-
-  // Simulate environment when ESP32 data is stale or unavailable
-  useEffect(() => {
-    if (!enableSimulation) return;
-
-    simulationIntervalRef.current = setInterval(() => {
-      const now = Date.now();
-      const staleThreshold = 10000; // Consider data stale after 10 seconds
-      const timeSinceESP32 = now - lastESP32Update.current;
-      
-      // Only simulate if no ESP32 data or data is stale
-      if (!esp32Data || !isConnected || timeSinceESP32 > staleThreshold) {
-        const simulated = simulateEnvironment(roomId);
-        
-        setEnvData({
-          temperature: simulated.temperature,
-          humidity: simulated.humidity,
-          motion: simulated.motion,
-          distance: simulated.distance,
-          inBed: simulated.inBed,
-          light: simulated.light,
-          dataSource: 'simulated',
-        });
-      }
-    }, updateInterval);
-
-    return () => {
-      if (simulationIntervalRef.current) {
-        clearInterval(simulationIntervalRef.current);
-      }
+    if (!enableSimulation) {
+      setSimulated(null);
+      return;
+    }
+    const update = () => {
+      setSimulated({ ...simulateEnvironment(simKey), dataSource: 'simulated' });
     };
-  }, [roomId, enableSimulation, updateInterval, esp32Data, isConnected]);
+    update();
+    const timer = setInterval(update, updateInterval);
+    return () => clearInterval(timer);
+  }, [hasNode, enableSimulation, updateInterval, simKey]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      clearEnvironmentHistory(roomId);
+      clearEnvironmentHistory(simKey);
     };
-  }, [roomId]);
+  }, [simKey]);
 
-  return envData;
+  if (!reading) return simulated;
+
+  const data = reading.data;
+  const custom = data.customSensors ?? {};
+  return {
+    temperature: data.temperature ?? 22,
+    humidity: data.humidity ?? 50,
+    motion: data.motion ?? false,
+    distance: typeof custom.distance === 'number' ? custom.distance : 150,
+    inBed: typeof custom.inBed === 'boolean' ? custom.inBed : false,
+    light: data.light ?? 400,
+    dataSource: Date.now() - reading.receivedAt > STALE_MS ? 'esp32-offline' : 'esp32',
+    deviceId: data.deviceId,
+    simulatedNode: custom.simulated === true,
+    receivedAt: reading.receivedAt,
+  };
 }
-

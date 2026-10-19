@@ -6,7 +6,7 @@ An operations dashboard for nursing facilities: a 3D ward map, patient and room 
 
 - **Frontend**: Vite, React, TypeScript, Tailwind and shadcn/ui. The ward map is react-three-fiber. It reads and writes Supabase directly with the anon key.
 - **Agent**: the chat calls OpenRouter from the browser with tool calling (check in, discharge, create task, get room context). The tools read and write Supabase.
-- **Sensor server** (`server/index.ts`): Express plus `ws` on port 3001. The ESP32 POSTs a reading to `/api/hardware` every 2 seconds, and the server pushes it to the dashboard over a WebSocket on the same port. The 3D room view shows those readings as Live and goes back to simulated values if nothing arrives for 10 seconds.
+- **Sensor server** (`server/index.ts`): Express plus `ws` on port 3001. Each ESP32 POSTs a reading with its `roomId` to `/api/hardware` every 2 seconds. The server keeps the latest reading per room (`GET /api/hardware` lists them) and pushes each one to the dashboard over a WebSocket on the same port. A room's 3D view only shows the node whose `roomId` matches that room's `id` or `room_number`, and marks it Offline after 10 seconds of silence. Rooms with no node show simulated values marked Simulated. A reading without a `roomId` is filed under `default`.
 - **Vitals**: patient vitals come from the Supabase `vitals` table and are simulated when there's no recent row. No sensor writes to that table yet.
 
 The Supabase schema isn't in this repo. The tables the app expects are typed in `src/lib/supabase.ts`.
@@ -26,7 +26,7 @@ To test the sensor path without hardware:
 
 ```bash
 curl -X POST localhost:3001/api/hardware -H "Content-Type: application/json" \
-  -d '{"deviceId":"TEST","temperature":22.4,"humidity":48,"light":400,"motion":false,"customSensors":{"distance":65,"inBed":true}}'
+  -d '{"deviceId":"TEST","roomId":"room-101","temperature":22.4,"humidity":48,"light":400,"motion":false,"customSensors":{"distance":65,"inBed":true}}'
 ```
 
 `amplify.yml` builds the static frontend on AWS Amplify. The sensor server isn't part of that deploy, so run it somewhere the browser can reach and set `VITE_SERVER_URL` in the Amplify build settings (it's read at build time). An https site needs an https server URL, because browsers block `ws://` from https pages. Without it the dashboard looks for `localhost:3001`.
@@ -46,7 +46,7 @@ The HC-SR04 is pointed at the mattress. Under 100 cm counts as in bed.
 
 ```bash
 cd firmware
-cp include/secrets.h.example include/secrets.h   # WiFi and the server's LAN address
+cp include/secrets.h.example include/secrets.h   # WiFi, the server's LAN address, ROOM_ID
 pio run -e esp32dev -t upload
 pio device monitor
 ```

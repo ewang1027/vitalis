@@ -2,6 +2,7 @@ import { SERVER_WS_URL } from '@/lib/server';
 
 export interface ESP32HardwareData {
   deviceId?: string;
+  roomId?: string;
   timestamp: number;
   temperature?: number;
   humidity?: number;
@@ -15,8 +16,15 @@ export interface ESP32HardwareData {
 export interface WebSocketMessage {
   type: 'connection' | 'hardware_update' | 'error';
   data?: ESP32HardwareData;
+  // Sent with 'connection': the server's latest reading for each room.
+  rooms?: Record<string, ESP32HardwareData>;
   message?: string;
   timestamp: number;
+}
+
+export interface RoomReading {
+  data: ESP32HardwareData;
+  receivedAt: number; // browser clock, so staleness doesn't depend on the server's clock
 }
 
 type MessageHandler = (message: WebSocketMessage) => void;
@@ -30,6 +38,7 @@ class ESP32WebSocketService {
   private messageHandlers: Set<MessageHandler> = new Set();
   private users: number = 0;
   private url: string;
+  private readings: Map<string, RoomReading> = new Map();
 
   constructor(url: string = SERVER_WS_URL) {
     this.url = url;
@@ -63,6 +72,7 @@ class ESP32WebSocketService {
       ws.onmessage = (event) => {
         try {
           const message: WebSocketMessage = JSON.parse(event.data);
+          this.track(message);
           this.notifyHandlers(message);
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
@@ -99,6 +109,24 @@ class ESP32WebSocketService {
     } else {
       console.error('Max reconnection attempts reached');
     }
+  }
+
+  // Keep the latest reading per room so a hook that mounts later still sees it.
+  private track(message: WebSocketMessage): void {
+    const now = Date.now();
+    if (message.type === 'connection' && message.rooms) {
+      this.readings.clear();
+      for (const [roomId, data] of Object.entries(message.rooms)) {
+        const age = Math.max(0, message.timestamp - data.timestamp);
+        this.readings.set(roomId, { data, receivedAt: now - age });
+      }
+    } else if (message.type === 'hardware_update' && message.data?.roomId) {
+      this.readings.set(message.data.roomId, { data: message.data, receivedAt: now });
+    }
+  }
+
+  getReading(roomId: string): RoomReading | undefined {
+    return this.readings.get(roomId);
   }
 
   subscribe(handler: MessageHandler): () => void {
