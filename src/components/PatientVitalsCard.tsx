@@ -106,7 +106,14 @@ export function PatientVitalsCard({
             </div>
 
             <div>
-              <p className="text-lg font-bold text-text-dark mb-2">Vitals</p>
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-lg font-bold text-text-dark">Vitals</p>
+                {vitalData && (
+                  <Badge variant="outline" className="text-xs px-1.5 py-0">
+                    {vitalData.dataSource === 'simulated' ? 'Simulated' : 'From database'}
+                  </Badge>
+                )}
+              </div>
 
               {/* Quarter grid layout for vitals */}
               <div className="grid grid-cols-2 gap-2">
