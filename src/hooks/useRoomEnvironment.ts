@@ -5,13 +5,14 @@ import { simulateEnvironment, clearEnvironmentHistory } from '@/utils/simulateEn
 // A node that hasn't reported for this long is shown as offline.
 const STALE_MS = 10000;
 
+// null means the node sent no value for that sensor (a failed read).
 export interface RoomEnvironmentData {
-  temperature: number;
-  humidity: number;
-  motion: boolean;
-  distance: number;
-  inBed: boolean;
-  light: number;
+  temperature: number | null;
+  humidity: number | null;
+  motion: boolean | null;
+  distance: number | null;
+  inBed: boolean | null;
+  light: number | null;
   // esp32: this room's node, fresh. esp32-offline: this room's node, stale.
   // simulated: no node has reported for this room.
   dataSource: 'esp32' | 'esp32-offline' | 'simulated';
@@ -72,12 +73,12 @@ export function useRoomEnvironment({
   const data = reading.data;
   const custom = data.customSensors ?? {};
   return {
-    temperature: data.temperature ?? 22,
-    humidity: data.humidity ?? 50,
-    motion: data.motion ?? false,
-    distance: typeof custom.distance === 'number' ? custom.distance : 150,
-    inBed: typeof custom.inBed === 'boolean' ? custom.inBed : false,
-    light: data.light ?? 400,
+    temperature: typeof data.temperature === 'number' ? data.temperature : null,
+    humidity: typeof data.humidity === 'number' ? data.humidity : null,
+    motion: typeof data.motion === 'boolean' ? data.motion : null,
+    distance: typeof custom.distance === 'number' ? custom.distance : null,
+    inBed: typeof custom.inBed === 'boolean' ? custom.inBed : null,
+    light: typeof data.light === 'number' ? data.light : null,
     dataSource: Date.now() - reading.receivedAt > STALE_MS ? 'esp32-offline' : 'esp32',
     deviceId: data.deviceId,
     simulatedNode: custom.simulated === true,

@@ -33,7 +33,7 @@ curl -X POST localhost:3001/api/hardware -H "Content-Type: application/json" \
 
 ## Firmware
 
-A PlatformIO project for an ESP32 DevKit v1 that acts as a room sensor node. Every 2 seconds it sends temperature, humidity, light, motion, and bed distance / in-bed to the sensor server. Fields from a failed sensor read are left out.
+A PlatformIO project for an ESP32 DevKit v1 that acts as a room sensor node. Every 2 seconds it sends temperature, humidity, light, motion, and bed distance / in-bed to the sensor server. Fields from a failed sensor read are left out, and the room view shows No reading for them.
 
 | Part | ESP32 pin | Notes |
 | --- | --- | --- |

@@ -18,6 +18,10 @@ import { Wheelchair } from '@/components/3d/Wheelchair';
 import { useRoomEnvironment } from '@/hooks/useRoomEnvironment';
 import { Badge } from '@/components/ui/badge';
 
+// Shown when the room's node sent no value for a sensor (a failed read)
+const NO_READING = 'No reading';
+const NO_READING_CLASS = 'text-muted-foreground italic';
+
 // Type for room details from useRoomDetails hook
 interface RoomDetailViewProps {
   room: {
@@ -369,38 +373,38 @@ export function RoomDetailView({ room, onExit }: RoomDetailViewProps) {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Temperature:</span>
-              <span className="font-medium text-orange-600">
-                {envData.temperature.toFixed(1)}°C
+              <span className={envData.temperature === null ? NO_READING_CLASS : 'font-medium text-orange-600'}>
+                {envData.temperature === null ? NO_READING : `${envData.temperature.toFixed(1)}°C`}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Humidity:</span>
-              <span className="font-medium text-blue-600">
-                {envData.humidity.toFixed(1)}%
+              <span className={envData.humidity === null ? NO_READING_CLASS : 'font-medium text-blue-600'}>
+                {envData.humidity === null ? NO_READING : `${envData.humidity.toFixed(1)}%`}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Motion Detected:</span>
-              <span className={`font-medium ${envData.motion ? 'text-red-600' : 'text-green-600'}`}>
-                {envData.motion ? 'Yes ⚡' : 'No'}
+              <span className={envData.motion === null ? NO_READING_CLASS : `font-medium ${envData.motion ? 'text-red-600' : 'text-green-600'}`}>
+                {envData.motion === null ? NO_READING : envData.motion ? 'Yes ⚡' : 'No'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Patient in Bed:</span>
-              <span className={`font-semibold ${envData.inBed ? 'text-green-600' : 'text-orange-600'}`}>
-                {envData.inBed ? '✓ Yes' : '✗ No'}
+              <span className={envData.inBed === null ? NO_READING_CLASS : `font-semibold ${envData.inBed ? 'text-green-600' : 'text-orange-600'}`}>
+                {envData.inBed === null ? NO_READING : envData.inBed ? '✓ Yes' : '✗ No'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Distance:</span>
-              <span className="font-medium text-purple-600">
-                {envData.distance} cm
+              <span className={envData.distance === null ? NO_READING_CLASS : 'font-medium text-purple-600'}>
+                {envData.distance === null ? NO_READING : `${envData.distance} cm`}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Light Level:</span>
-              <span className="font-medium text-yellow-600">
-                {envData.light} lux
+              <span className={envData.light === null ? NO_READING_CLASS : 'font-medium text-yellow-600'}>
+                {envData.light === null ? NO_READING : `${envData.light} lux`}
               </span>
             </div>
           </div>
