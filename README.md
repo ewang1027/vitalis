@@ -18,7 +18,9 @@ npm run dev        # Vite on :8080 and the Express server on :3001
 
 Copy `.env.example` to `.env` and fill it in first. For a new Supabase project, run `supabase/schema.sql` in the SQL editor. It was rebuilt from the app's queries rather than exported from the original project, and it has no seed data.
 
-The OpenRouter key goes in `.env` as `OPENROUTER_API_KEY`, with no `VITE_` prefix, so only the server sees it. There's no auth on `/api/llm` (it only allows the app's models and caps tokens), so anyone who can reach the server can spend the key. Keep it on a network you trust or add auth before putting it on the internet.
+The OpenRouter key goes in `.env` as `OPENROUTER_API_KEY`, with no `VITE_` prefix, so only the server sees it. `/api/llm` only answers browsers from `ALLOWED_ORIGINS`, is rate limited per IP (a burst of 30, then 30 a minute), only allows the app's models and caps tokens. A script can still fake the Origin header, so this isn't real auth.
+
+The server only listens on 127.0.0.1 unless you set `SERVER_HOST` (`0.0.0.0` for an ESP32 on your network or for hosting), and `ALLOWED_ORIGINS` (comma-separated, default `http://localhost:8080`) lists the browser origins it accepts.
 
 To test the sensor path without hardware:
 
@@ -27,7 +29,7 @@ curl -X POST localhost:3001/api/hardware -H "Content-Type: application/json" \
   -d '{"deviceId":"TEST","roomId":"room-101","temperature":22.4,"humidity":48,"light":400,"motion":false,"customSensors":{"distance":65,"inBed":true}}'
 ```
 
-`amplify.yml` builds the static frontend on AWS Amplify. The Express server isn't part of that deploy, and the hosted site needs it for both the sensor feed and the chat, since the server holds the OpenRouter key. Without it the dashboard still loads, but the chat agent fails, and quick prompts, task parsing and task animations fall back to fixed defaults and a regex parser. Run the server somewhere the browser can reach and set `VITE_SERVER_URL` in the Amplify build settings (it's read at build time). An https site needs an https server URL, because browsers block `ws://` from https pages. Without it the dashboard looks for `localhost:3001`.
+`amplify.yml` builds the static frontend on AWS Amplify. The Express server isn't part of that deploy, and the hosted site needs it for both the sensor feed and the chat, since the server holds the OpenRouter key. Without it the dashboard still loads, but the chat agent fails, and quick prompts, task parsing and task animations fall back to fixed defaults and a regex parser. Run the server somewhere the browser can reach, with the site's origin in `ALLOWED_ORIGINS`, and set `VITE_SERVER_URL` in the Amplify build settings (it's read at build time). An https site needs an https server URL, because browsers block `ws://` from https pages. Without it the dashboard looks for `localhost:3001`.
 
 ## Firmware
 
@@ -49,4 +51,4 @@ pio run -e esp32dev -t upload
 pio device monitor
 ```
 
-`pio run -e esp32dev-sim -t upload` builds a version that sends simulated readings (tagged `simulated: true`, and marked Simulated in the room view) so you can test with a bare board. The ESP32 only joins 2.4 GHz networks, and it has to reach port 3001 on the machine running `npm run dev`.
+`pio run -e esp32dev-sim -t upload` builds a version that sends simulated readings (tagged `simulated: true`, and marked Simulated in the room view) so you can test with a bare board. The ESP32 only joins 2.4 GHz networks, and it has to reach port 3001 on the machine running `npm run dev`, so set `SERVER_HOST=0.0.0.0` there.

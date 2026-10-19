@@ -12,10 +12,19 @@ try {
 }
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+// Loopback only by default. Set SERVER_HOST=0.0.0.0 so an ESP32 on the LAN, or
+// a hosting proxy, can reach the server.
+const HOST = process.env.SERVER_HOST || '127.0.0.1';
+
+// Browser origins allowed to use the server, comma-separated.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
 
 // Middleware
-app.use(cors());
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json({ limit: '1mb' })); // agent requests carry the chat history
 
 // Store connected WebSocket clients
@@ -105,7 +114,50 @@ const LLM_MODELS = new Set([
 ]);
 const LLM_MAX_TOKENS = 2000;
 
+// Per-IP token bucket: a burst of LLM_BURST requests, refilled at
+// LLM_PER_MINUTE a minute. One chat message can take several requests
+// (tool calls, retries, model fallback), so the burst is generous.
+const LLM_BURST = 30;
+const LLM_PER_MINUTE = 30;
+const llmBuckets = new Map<string, { tokens: number; updated: number }>();
+
+function takeLlmToken(ip: string): number {
+  const now = Date.now();
+  const bucket = llmBuckets.get(ip) ?? { tokens: LLM_BURST, updated: now };
+  bucket.tokens = Math.min(LLM_BURST, bucket.tokens + ((now - bucket.updated) / 60000) * LLM_PER_MINUTE);
+  bucket.updated = now;
+  llmBuckets.set(ip, bucket);
+  if (bucket.tokens >= 1) {
+    bucket.tokens -= 1;
+    return 0;
+  }
+  return Math.ceil(((1 - bucket.tokens) / LLM_PER_MINUTE) * 60); // seconds until the next token
+}
+
+// Forget buckets that have refilled, so the map doesn't grow forever.
+setInterval(() => {
+  const cutoff = Date.now() - (LLM_BURST / LLM_PER_MINUTE) * 60000;
+  for (const [ip, bucket] of llmBuckets) {
+    if (bucket.updated < cutoff) llmBuckets.delete(ip);
+  }
+}, 10 * 60000).unref();
+
 app.post('/api/llm', async (req, res) => {
+  // Only the dashboard's own origin. Browsers always send Origin on this
+  // cross-origin POST, so a missing one means a script, not the app.
+  const origin = req.get('origin');
+  if (!origin || !ALLOWED_ORIGINS.includes(origin)) {
+    res.status(403).json({ error: { message: `Origin not allowed: ${origin ?? 'none'}` } });
+    return;
+  }
+
+  const retryAfter = takeLlmToken(req.ip ?? 'unknown');
+  if (retryAfter > 0) {
+    res.set('Retry-After', String(retryAfter));
+    res.status(429).json({ error: { message: `Too many LLM requests, try again in ${retryAfter} s` } });
+    return;
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     res.status(503).json({
@@ -133,7 +185,7 @@ app.post('/api/llm', async (req, res) => {
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': req.get('origin') || 'http://localhost:8080',
+        'HTTP-Referer': origin,
         'X-Title': 'Vitalis',
       },
       body: JSON.stringify({
@@ -204,8 +256,8 @@ wss.on('connection', (ws: WebSocket) => {
 });
 
 // Start server
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`Server running on ${HOST}:${PORT}, allowing origins ${ALLOWED_ORIGINS.join(', ')}`);
   console.log(`HTTP API: http://localhost:${PORT}/api/hardware`);
   console.log(`WebSocket: ws://localhost:${PORT}`);
   console.log(`LLM proxy: http://localhost:${PORT}/api/llm${process.env.OPENROUTER_API_KEY ? '' : ' (OPENROUTER_API_KEY not set)'}`);
